@@ -1,0 +1,33 @@
+hash: 4ffb1b60ff67cfee1893295eb3ebfadb6d6114a8d43935555d8a4fa67d84b82e
+updated: 2016-05-19T11:45:05.078422402-07:00
+imports:
+- name: github.com/inconshreveable/mousetrap
+  version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- name: github.com/nats-io/nats
+  version: fc85f44c1659ab6610d76fd6bd0e44ad2cadf697
+  subpackages:
+  - encoders/builtin
+- name: github.com/nats-io/nuid
+  version: a5152d67cf63cbfb5d992a395458722a45194715
+- name: github.com/netlify/util
+  version: 868303b277708ff40a34858d9cd585faf066d939
+  subpackages:
+  - config
+  - logger
+  - nats
+- name: github.com/Sirupsen/logrus
+  version: cd7d1bbe41066b6c1f19780f895901052150a575
+- name: github.com/spf13/cobra
+  version: f368244301305f414206f889b1735a54cfc8bde8
+- name: github.com/spf13/pflag
+  version: cb88ea77998c3f024757528e3305022ab50b43be
+- name: golang.org/x/sys
+  version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
+  subpackages:
+  - unix
+- name: gopkg.in/olivere/elastic.v3
+  version: aa80db5ac257057adde4efdafb4aad58ef495acc
+  subpackages:
+  - backoff
+  - uritemplates
+devImports: []

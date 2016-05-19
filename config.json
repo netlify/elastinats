@@ -1,0 +1,27 @@
+{
+  "nats_conf": {
+    "servers": ["nats://localhost:4222"],
+    "cert_file": "/usr/local/etc/certs/test.pem",
+    "key_file":  "/usr/local/etc/certs/test-key.pem",
+    "ca_files": ["/usr/local/etc/certs/ca.pem"],
+    "hostname": "nats.lo"
+  },
+  "elastic_conf": {
+    "use_https": false,
+    "hosts": [ "http://localhost:9200" ],
+    "index": "logs"
+  },
+  "log_conf": {
+    "log_level": "DEBUG",
+    "log_file": ""
+  },
+  "subjects": [
+    {
+      "subject": "test-1-log"
+    },
+    {
+      "subject": "test-2-log",
+      "group": "shared"
+    }
+  ]
+}

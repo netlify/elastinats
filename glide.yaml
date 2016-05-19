@@ -1,4 +1,4 @@
-package: github.com/netlify/natsbeat
+package: github.com/netlify/elastinats
 import:
 - package: github.com/Sirupsen/logrus
 - package: github.com/nats-io/nats

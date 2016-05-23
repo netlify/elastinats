@@ -3,6 +3,7 @@ import:
 - package: github.com/Sirupsen/logrus
 - package: github.com/nats-io/nats
 - package: github.com/netlify/util
+  version: v1.0.0
   subpackages:
   - config
   - logger

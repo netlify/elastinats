@@ -20,7 +20,7 @@
       "subject": "test-1-log"
     },
     {
-      "subject": "test-2-log",
+      "subject": "test-log.>",
       "group": "shared"
     }
   ]

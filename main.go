@@ -13,7 +13,7 @@ import (
 
 	nconfig "github.com/netlify/util/config"
 	nlog "github.com/netlify/util/logger"
-	nnats "github.com/netlify/util/nats"
+	nnats "github.com/netlify/util/messaging"
 )
 
 var rootLog *logrus.Entry
@@ -30,7 +30,7 @@ type subjectAndGroup struct {
 }
 
 type configuration struct {
-	NatsConf    nnats.Configuration   `json:"nats_conf"`
+	NatsConf    nnats.NatsConfig      `json:"nats_conf"`
 	ElasticConf elasticConfig         `json:"elastic_conf"`
 	LogConf     nlog.LogConfiguration `json:"log_conf"`
 	Subjects    []subjectAndGroup     `json:"subjects"`
@@ -88,7 +88,7 @@ func run(configFile string) error {
 	}
 
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
-	nc, err := nnats.Connect(&config.NatsConf)
+	nc, err := nnats.ConnectToNats(&config.NatsConf)
 	if err != nil {
 		return err
 	}

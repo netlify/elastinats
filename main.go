@@ -8,33 +8,12 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/nats-io/nats"
+	"github.com/netlify/messaging"
 	"github.com/spf13/cobra"
 	elastic "gopkg.in/olivere/elastic.v3"
-
-	nconfig "github.com/netlify/util/config"
-	nlog "github.com/netlify/util/logger"
-	nnats "github.com/netlify/util/messaging"
 )
 
 var rootLog *logrus.Entry
-
-type elasticConfig struct {
-	Index    string   `json:"index"`
-	Hosts    []string `json:"hosts"`
-	UseHTTPS bool     `json:"use_https"`
-}
-
-type subjectAndGroup struct {
-	Subject string `json:"subject"`
-	Group   string `json:"group"`
-}
-
-type configuration struct {
-	NatsConf    nnats.NatsConfig      `json:"nats_conf"`
-	ElasticConf elasticConfig         `json:"elastic_conf"`
-	LogConf     nlog.LogConfiguration `json:"log_conf"`
-	Subjects    []subjectAndGroup     `json:"subjects"`
-}
 
 func main() {
 	var cfgFile string
@@ -58,12 +37,12 @@ func main() {
 
 func run(configFile string) error {
 	config := new(configuration)
-	err := nconfig.LoadFromFile(configFile, config)
+	err := loadFromFile(configFile, config)
 	if err != nil {
 		return err
 	}
 
-	rootLog, err = nlog.ConfigureLogging(&config.LogConf)
+	rootLog, err = configureLogging(&config.LogConf)
 	if err != nil {
 		return err
 	}
@@ -88,7 +67,7 @@ func run(configFile string) error {
 	}
 
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
-	nc, err := nnats.ConnectToNats(&config.NatsConf)
+	nc, err := messaging.ConnectToNats(&config.NatsConf)
 	if err != nil {
 		return err
 	}

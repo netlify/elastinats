@@ -2,11 +2,6 @@ package: github.com/netlify/elastinats
 import:
 - package: github.com/Sirupsen/logrus
 - package: github.com/nats-io/nats
-- package: github.com/netlify/util
-  version: v1.0.0
-  subpackages:
-  - config
-  - logger
-  - nats
+- package: github.com/netlify/messaging
 - package: github.com/spf13/cobra
 - package: gopkg.in/olivere/elastic.v3

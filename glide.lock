@@ -1,5 +1,5 @@
-hash: 1267fdee3a091dc9fc7809c71322ee71ff352eb89303ac2049fe41b57f7709d4
-updated: 2016-05-23T13:42:42.138805263-07:00
+hash: 5f41c143ad3a337a6409320a269e097e28348172e1e7e2f65a8a6e10d6811f1f
+updated: 2016-05-23T16:32:51.551849681-07:00
 imports:
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
@@ -9,13 +9,8 @@ imports:
   - encoders/builtin
 - name: github.com/nats-io/nuid
   version: a5152d67cf63cbfb5d992a395458722a45194715
-- name: github.com/netlify/util
-  version: f28ce4239de9a81c74b886d4c094a22d99a89d6c
-  subpackages:
-  - config
-  - logger
-  - nats
-  - messaging
+- name: github.com/netlify/messaging
+  version: bbfdc4308f73ca41c0a872bd0ae7181c1bf29ed2
 - name: github.com/Sirupsen/logrus
   version: cd7d1bbe41066b6c1f19780f895901052150a575
 - name: github.com/spf13/cobra

@@ -143,6 +143,7 @@ func connectToES(config elasticConfig) (*elastigo.Conn, error) {
 func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg, log *logrus.Entry) {
 	for msg := range natsSubj {
 		payload := make(map[string]interface{})
+		log.Debugf("raw message: %s", string(msg.Data))
 
 		// maybe it is json!
 		_ = json.Unmarshal(msg.Data, &payload)

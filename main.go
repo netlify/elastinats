@@ -155,6 +155,6 @@ func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg
 			log.WithError(err).Warn("Error sending data to elasticsearch")
 		}
 
-		log.Debug("inserted line: %s", resp.Id)
+		log.Debugf("inserted line: %s", resp.Id)
 	}
 }

@@ -2,15 +2,18 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	elastigo "github.com/mattbaird/elastigo/lib"
 	"github.com/nats-io/nats"
-	"github.com/netlify/messaging"
 	"github.com/spf13/cobra"
-	elastic "gopkg.in/olivere/elastic.v3"
+
+	"github.com/netlify/messaging"
 )
 
 var rootLog *logrus.Entry
@@ -20,12 +23,12 @@ func main() {
 	rootCmd := cobra.Command{
 		Short: "elastinat",
 		Long:  "elastinat",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return run(cfgFile)
+		Run: func(cmd *cobra.Command, args []string) {
+			run(cfgFile)
 		},
 	}
 
-	rootCmd.Flags().StringVarP(&cfgFile, "config", "c", "config.json", "the json config file")
+	rootCmd.PersistentFlags().StringVarP(&cfgFile, "config", "c", "config.json", "the json config file")
 
 	if err := rootCmd.Execute(); err != nil {
 		if rootLog != nil {
@@ -35,41 +38,28 @@ func main() {
 	}
 }
 
-func run(configFile string) error {
+func run(configFile string) {
 	config := new(configuration)
 	err := loadFromFile(configFile, config)
 	if err != nil {
-		return err
+		log.Fatalf("Failed to load configuation: %s %v", configFile, err)
 	}
 
 	rootLog, err = configureLogging(&config.LogConf)
 	if err != nil {
-		return err
+		log.Fatalf("Failed to configure logging")
 	}
 
-	scheme := "http"
-	if config.ElasticConf.UseHTTPS {
-		scheme = "https"
-	}
-
-	rootLog.WithFields(logrus.Fields{
-		"hosts":     config.ElasticConf.Hosts,
-		"use_https": config.ElasticConf.UseHTTPS,
-		"index":     config.ElasticConf.Index,
-	}).Info("Connecting to elastic search")
-
-	client, err := elastic.NewClient(
-		elastic.SetScheme(scheme),
-		elastic.SetURL(config.ElasticConf.Hosts...),
-	)
+	conn, err := connectToES(config.ElasticConf)
 	if err != nil {
-		return err
+		rootLog.WithError(err).Fatal("Failed to connect to elasticsearch")
 	}
+	rootLog.Info("Connected to elasticseach")
 
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
 	nc, err := messaging.ConnectToNats(&config.NatsConf)
 	if err != nil {
-		return err
+		rootLog.WithError(err).Fatal("Failed to connect to nats")
 	}
 
 	wg := sync.WaitGroup{}
@@ -91,13 +81,13 @@ func run(configFile string) error {
 			_, err = nc.ChanQueueSubscribe(pair.Subject, pair.Group, c)
 		}
 		if err != nil {
-			return err
+			log.WithError(err).Fatal("Failed to subscribe")
 		}
 
 		wg.Add(1)
 		f := func() {
 			log.Info("Starting to consume")
-			consumeForever(config.ElasticConf.Index, client, c, log)
+			consumeForever(config.ElasticConf.Index, conn, c, log)
 			log.Info("Finished consuming")
 			wg.Done()
 		}
@@ -111,11 +101,46 @@ func run(configFile string) error {
 
 	wg.Wait()
 	rootLog.Info("Shutting down")
-
-	return nil
 }
 
-func consumeForever(index string, client *elastic.Client, natsSubj chan *nats.Msg, log *logrus.Entry) {
+func connectToES(config elasticConfig) (*elastigo.Conn, error) {
+	rootLog.WithFields(logrus.Fields{
+		"hosts": config.Hosts,
+		"index": config.Index,
+		"port":  config.Port,
+		"trace": config.Trace,
+	}).Info("Connecting to elastic search")
+
+	conn := elastigo.NewConn()
+	if config.Port > 0 {
+		conn.SetPort(fmt.Sprintf("%d", config.Port))
+	}
+
+	if config.Trace {
+		conn.RequestTracer = func(method, url, body string) {
+			rootLog.WithFields(logrus.Fields{
+				"component": "es",
+				"method":    method,
+				"url":       url,
+			}).Info(body)
+		}
+	}
+
+	conn.Hosts = config.Hosts
+
+	h, err := conn.Health()
+	if err != nil {
+		return nil, err
+	}
+
+	if h.Status != "green" {
+		return nil, fmt.Errorf("The status of the cluster is not green it is %s", h.Status)
+	}
+
+	return conn, nil
+}
+
+func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg, log *logrus.Entry) {
 	for msg := range natsSubj {
 		payload := make(map[string]interface{})
 
@@ -125,9 +150,11 @@ func consumeForever(index string, client *elastic.Client, natsSubj chan *nats.Ms
 		payload["@raw_msg"] = string(msg.Data)
 		payload["@timestamp"] = time.Now().Unix()
 		payload["@source"] = msg.Subject
-		_, err := client.Index().Index(index).Type("log_line").BodyJson(payload).Do()
+		resp, err := client.Index(index, "log_line", "", nil, payload)
 		if err != nil {
 			log.WithError(err).Warn("Error sending data to elasticsearch")
 		}
+
+		log.Debug("inserted line: %s", resp.Id)
 	}
 }

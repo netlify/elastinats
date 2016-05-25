@@ -1,8 +1,16 @@
-hash: 5f41c143ad3a337a6409320a269e097e28348172e1e7e2f65a8a6e10d6811f1f
-updated: 2016-05-23T16:32:51.551849681-07:00
+hash: d4d28865670f599d36c1fdf29bbc09bdc1efd8d54a82ee1487defb1b27f4cc7b
+updated: 2016-05-25T15:19:53.616397723-07:00
 imports:
+- name: github.com/araddon/gou
+  version: 50a94aa4a3fb69e8fbde05df290fcb49fa685e07
+- name: github.com/bitly/go-hostpool
+  version: d0e59c22a56e8dadfed24f74f452cea5a52722d2
 - name: github.com/inconshreveable/mousetrap
   version: 76626ae9c91c4f2a10f34cad8ce83ea42c93bb75
+- name: github.com/mattbaird/elastigo
+  version: 34c4c4d8425cbdcbc8e257943a2044d5e9f7dab5
+  subpackages:
+  - lib
 - name: github.com/nats-io/nats
   version: fc85f44c1659ab6610d76fd6bd0e44ad2cadf697
   subpackages:
@@ -12,7 +20,7 @@ imports:
 - name: github.com/netlify/messaging
   version: bbfdc4308f73ca41c0a872bd0ae7181c1bf29ed2
 - name: github.com/Sirupsen/logrus
-  version: cd7d1bbe41066b6c1f19780f895901052150a575
+  version: 6d9ae300aaf85d6acd2e5424081c7fcddb21dab8
 - name: github.com/spf13/cobra
   version: f368244301305f414206f889b1735a54cfc8bde8
 - name: github.com/spf13/pflag
@@ -23,9 +31,4 @@ imports:
   version: d4feaf1a7e61e1d9e79e6c4e76c6349e9cab0a03
   subpackages:
   - unix
-- name: gopkg.in/olivere/elastic.v3
-  version: aa80db5ac257057adde4efdafb4aad58ef495acc
-  subpackages:
-  - backoff
-  - uritemplates
 devImports: []

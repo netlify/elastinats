@@ -4,4 +4,6 @@ import:
 - package: github.com/nats-io/nats
 - package: github.com/netlify/messaging
 - package: github.com/spf13/cobra
-- package: gopkg.in/olivere/elastic.v3
+- package: github.com/mattbaird/elastigo
+  subpackages:
+  - lib

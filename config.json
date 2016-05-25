@@ -7,9 +7,10 @@
     "hostname": "nats.lo"
   },
   "elastic_conf": {
-    "use_https": false,
-    "hosts": [ "http://elastic.lo:9200" ],
-    "index": "logs"
+    "hosts": [ "elastic.lo" ],
+    "index": "logs",
+    "port": 9200,
+    "trace": true
   },
   "log_conf": {
     "log_level": "DEBUG",

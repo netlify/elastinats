@@ -20,9 +20,10 @@ type configuration struct {
 }
 
 type elasticConfig struct {
-	Index    string   `json:"index"`
-	Hosts    []string `json:"hosts"`
-	UseHTTPS bool     `json:"use_https"`
+	Index string   `json:"index"`
+	Hosts []string `json:"hosts"`
+	Port  int      `json:"port"`
+	Trace bool     `json:"trace"`
 }
 
 type subjectAndGroup struct {

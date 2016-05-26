@@ -142,20 +142,26 @@ func connectToES(config elasticConfig) (*elastigo.Conn, error) {
 
 func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg, log *logrus.Entry) {
 	for msg := range natsSubj {
-		payload := make(map[string]interface{})
-		log.Debugf("raw message: %s", string(msg.Data))
+		m := msg
 
-		// maybe it is json!
-		_ = json.Unmarshal(msg.Data, &payload)
+		// DO NOT BLOCK
+		// nats is truely a fire and forget, we need to get make sure we are ready to
+		// take off the subject immediately. And we can have tons of go routines so
+		// this seems like the natural pairing.
+		go func() {
+			payload := make(map[string]interface{})
 
-		payload["@raw_msg"] = string(msg.Data)
-		payload["@timestamp"] = time.Now().Unix()
-		payload["@source"] = msg.Subject
-		resp, err := client.Index(index, "log_line", "", nil, payload)
-		if err != nil {
-			log.WithError(err).Warn("Error sending data to elasticsearch")
-		}
+			// maybe it is json!
+			_ = json.Unmarshal(m.Data, &payload)
 
-		log.Debugf("inserted line: %s", resp.Id)
+			payload["@raw_msg"] = string(m.Data)
+			payload["@timestamp"] = time.Now().Unix()
+			payload["@source"] = m.Subject
+			resp, err := client.Index(index, "log_line", "", nil, payload)
+			if err != nil {
+				log.WithError(err).Warn("Error sending data to elasticsearch")
+			}
+			log.Debugf("inserted line: %s", resp.Id)
+		}()
 	}
 }

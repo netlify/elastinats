@@ -157,6 +157,9 @@ func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg
 			payload["@raw_msg"] = string(m.Data)
 			payload["@timestamp"] = time.Now().Unix()
 			payload["@source"] = m.Subject
+
+			log.Debugf("raw: %s", payload["@raw_msg"])
+
 			resp, err := client.Index(index, "log_line", "", nil, payload)
 			if err != nil {
 				log.WithError(err).Warn("Error sending data to elasticsearch")

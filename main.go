@@ -155,7 +155,7 @@ func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg
 			_ = json.Unmarshal(m.Data, &payload)
 
 			payload["@raw_msg"] = string(m.Data)
-			payload["@timestamp"] = time.Now().Unix()
+			payload["@timestamp"] = time.Now().Format(time.RFC3339)
 			payload["@source"] = m.Subject
 
 			log.Debugf("raw: %s", payload["@raw_msg"])

@@ -56,11 +56,11 @@ func run(configFile string) {
 	rootLog.Info("Configured - starting to connect and consume")
 
 	// connect to ES
-	clientChannel := make(chan *map[string]interface{})
+	clientChannel := make(chan *payload)
 	stats := new(counters)
 	go reportStats(config.ReportSec, stats, rootLog)
 
-	go sendToES(&config.ElasticConf, rootLog, clientChannel, stats)
+	go batchAndSend(&config.ElasticConf, clientChannel, stats, rootLog)
 
 	// connect to NATS
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
@@ -110,7 +110,7 @@ func run(configFile string) {
 	rootLog.Info("Shutting down")
 }
 
-func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *map[string]interface{}, stats *counters) {
+func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *payload, stats *counters) {
 	for msg := range natsSubj {
 		stats.natsConsumed++
 		m := msg
@@ -120,16 +120,12 @@ func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *map[string]interface
 		// take off the subject immediately. And we can have tons of go routines so
 		// this seems like the natural pairing.
 		go func() {
-			payload := make(map[string]interface{})
+			payload := newPayload(string(m.Data), m.Subject)
 
 			// maybe it is json!
-			_ = json.Unmarshal(m.Data, &payload)
+			_ = json.Unmarshal(m.Data, payload)
 
-			payload["@raw_msg"] = string(m.Data)
-			payload["@timestamp"] = time.Now().Format(time.RFC3339)
-			payload["@source"] = m.Subject
-
-			toSend <- &payload
+			toSend <- payload
 		}()
 	}
 }

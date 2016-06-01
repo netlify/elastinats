@@ -15,14 +15,6 @@ type configuration struct {
 	ReportSec   int64                `json:"report_sec"`
 }
 
-type elasticConfig struct {
-	Index             string   `json:"index"`
-	Hosts             []string `json:"hosts"`
-	Port              int      `json:"port"`
-	Trace             bool     `json:"trace"`
-	ReconnectAttempts int      `json:"reconnect_attempts"`
-}
-
 type subjectAndGroup struct {
 	Subject string `json:"subject"`
 	Group   string `json:"group"`

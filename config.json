@@ -10,7 +10,8 @@
     "hosts": [ "elastic.lo" ],
     "index": "logs",
     "port": 9200,
-    "trace": true
+    "trace": true,
+    "reconnect_attempts": 5
   },
   "log_conf": {
     "log_level": "DEBUG",

@@ -2,14 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"os"
 	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	elastigo "github.com/mattbaird/elastigo/lib"
 	"github.com/nats-io/nats"
 	"github.com/spf13/cobra"
 
@@ -17,6 +15,11 @@ import (
 )
 
 var rootLog *logrus.Entry
+
+type counters struct {
+	natsConsumed int64
+	esSent       int64
+}
 
 func main() {
 	var cfgFile string
@@ -50,26 +53,29 @@ func run(configFile string) {
 		log.Fatalf("Failed to configure logging")
 	}
 
-	conn, err := connectToES(config.ElasticConf)
-	if err != nil {
-		rootLog.WithError(err).Fatal("Failed to connect to elasticsearch")
-	}
-	rootLog.Info("Connected to elasticseach")
+	rootLog.Info("Configured - starting to connect and consume")
 
+	// connect to ES
+	clientChannel := make(chan *map[string]interface{})
+	stats := new(counters)
+	go reportStats(config.ReportSec, stats, rootLog)
+
+	go sendToES(&config.ElasticConf, rootLog, clientChannel, stats)
+
+	// connect to NATS
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
 	nc, err := messaging.ConnectToNats(&config.NatsConf)
 	if err != nil {
 		rootLog.WithError(err).Fatal("Failed to connect to nats")
 	}
 
+	// build all the tailers
 	wg := sync.WaitGroup{}
 	funcs := make([]func(), 0, len(config.Subjects))
-
 	for _, pair := range config.Subjects {
 		log := rootLog.WithFields(logrus.Fields{
 			"subject": pair.Subject,
 			"group":   pair.Group,
-			"index":   config.ElasticConf.Index,
 		})
 		log.Debug("Connecting channel")
 
@@ -87,7 +93,7 @@ func run(configFile string) {
 		wg.Add(1)
 		f := func() {
 			log.Info("Starting to consume")
-			consumeForever(config.ElasticConf.Index, conn, c, log)
+			consumeForever(c, clientChannel, stats)
 			log.Info("Finished consuming")
 			wg.Done()
 		}
@@ -95,6 +101,7 @@ func run(configFile string) {
 		funcs = append(funcs, f)
 	}
 
+	// launch all the tailers
 	for _, f := range funcs {
 		go f()
 	}
@@ -103,45 +110,9 @@ func run(configFile string) {
 	rootLog.Info("Shutting down")
 }
 
-func connectToES(config elasticConfig) (*elastigo.Conn, error) {
-	rootLog.WithFields(logrus.Fields{
-		"hosts": config.Hosts,
-		"index": config.Index,
-		"port":  config.Port,
-		"trace": config.Trace,
-	}).Info("Connecting to elastic search")
-
-	conn := elastigo.NewConn()
-	if config.Port > 0 {
-		conn.SetPort(fmt.Sprintf("%d", config.Port))
-	}
-
-	if config.Trace {
-		conn.RequestTracer = func(method, url, body string) {
-			rootLog.WithFields(logrus.Fields{
-				"component": "es",
-				"method":    method,
-				"url":       url,
-			}).Info(body)
-		}
-	}
-
-	conn.Hosts = config.Hosts
-
-	h, err := conn.Health()
-	if err != nil {
-		return nil, err
-	}
-
-	if h.Status != "green" {
-		return nil, fmt.Errorf("The status of the cluster is not green it is %s", h.Status)
-	}
-
-	return conn, nil
-}
-
-func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg, log *logrus.Entry) {
+func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *map[string]interface{}, stats *counters) {
 	for msg := range natsSubj {
+		stats.natsConsumed++
 		m := msg
 
 		// DO NOT BLOCK
@@ -158,13 +129,21 @@ func consumeForever(index string, client *elastigo.Conn, natsSubj chan *nats.Msg
 			payload["@timestamp"] = time.Now().Format(time.RFC3339)
 			payload["@source"] = m.Subject
 
-			log.Debugf("raw: %s", payload["@raw_msg"])
-
-			resp, err := client.Index(index, "log_line", "", nil, payload)
-			if err != nil {
-				log.WithError(err).Warn("Error sending data to elasticsearch")
-			}
-			log.Debugf("inserted line: %s", resp.Id)
+			toSend <- &payload
 		}()
+	}
+}
+
+func reportStats(reportSec int64, stats *counters, log *logrus.Entry) {
+	if reportSec == 0 {
+		return
+	}
+
+	ticks := time.Tick(time.Second * time.Duration(reportSec))
+	for range ticks {
+		log.WithFields(logrus.Fields{
+			"messages_rx": stats.natsConsumed,
+			"messages_tx": stats.esSent,
+		}).Info("processed messages from nats to es")
 	}
 }

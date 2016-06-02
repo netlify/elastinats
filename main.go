@@ -132,6 +132,7 @@ func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *payload, stats *coun
 
 func reportStats(reportSec int64, stats *counters, log *logrus.Entry) {
 	if reportSec == 0 {
+		log.Debug("Stats reporting disabled")
 		return
 	}
 

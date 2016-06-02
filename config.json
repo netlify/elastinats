@@ -12,7 +12,6 @@
     "port": 9200,
     "trace": true,
     "reconnect_attempts": 5,
-    "retry_seconds": 30,
     "batch_size": 100,
     "batch_timeout_sec": 10
   },

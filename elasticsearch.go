@@ -31,19 +31,11 @@ type elasticConfig struct {
 	Port              int      `json:"port"`
 	Trace             bool     `json:"trace"`
 	ReconnectAttempts int      `json:"reconnect_attempts"`
-	RetrySeconds      int      `json:"retry_seconds"`
 	BatchSize         int      `json:"batch_size"`
 	BatchTimeoutSec   int      `json:"batch_timeout_sec"`
 }
 
 func (config elasticConfig) connectToES(log *logrus.Entry) (*elastigo.Conn, error) {
-	log.WithFields(logrus.Fields{
-		"hosts": config.Hosts,
-		"index": config.Index,
-		"port":  config.Port,
-		"trace": config.Trace,
-	}).Info("Connecting to elastic search")
-
 	conn := elastigo.NewConn()
 	if config.Port > 0 {
 		conn.SetPort(fmt.Sprintf("%d", config.Port))
@@ -66,11 +58,12 @@ func (config elasticConfig) connectToES(log *logrus.Entry) (*elastigo.Conn, erro
 func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counters, log *logrus.Entry) {
 	log = log.WithFields(logrus.Fields{
 		"index": config.Index,
-		"hosts": config.Hosts,
-		"port":  config.Port,
 	})
 
 	log.WithFields(logrus.Fields{
+		"hosts":         config.Hosts,
+		"port":          config.Port,
+		"trace":         config.Trace,
 		"batch_size":    config.BatchSize,
 		"batch_timeout": config.BatchTimeoutSec,
 	}).Info("Starting to consume forever and batch send to ES")
@@ -82,12 +75,12 @@ func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counte
 		case in := <-incoming:
 			batch = append(batch, in)
 			if len(batch) >= config.BatchSize {
-				log.Debug("Sending batch it sent the right size")
+				log.WithField("size", len(batch)).Debug("Sending batch because of size")
 				go sendToES(config, log, stats, batch)
 				batch = make([]*payload, 0, config.BatchSize)
 			}
 		case <-time.After(time.Duration(config.BatchTimeoutSec) * time.Second):
-			log.Debug("Sending batch because of timeout")
+			log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
 			go sendToES(config, log, stats, batch)
 			batch = make([]*payload, 0, config.BatchSize)
 		}
@@ -109,16 +102,7 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 		log.WithError(err).Fatal("Failed to connect to elasticsearch")
 	}
 	log.Debug("Connected to elasticseach")
-	indexer := client.NewBulkIndexerErrors(3, config.RetrySeconds)
-	go logErrors(indexer, log)
-
-	log.Debug("Started indexer")
-	indexer.Start()
-	defer func() {
-		log.Debug("Shutting down indexer")
-		indexer.Flush()
-		indexer.Stop()
-	}()
+	defer client.Close()
 
 	for _, in := range batch {
 		payload := *in
@@ -127,22 +111,19 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 			resend = false
 			log.Debugf("Sending to ES: %s", payload)
 
-			now := time.Now()
-			err := indexer.Index(
+			rsp, err := client.Index(
 				config.Index, // index
 				"log_line",   // _type
 				"",           // _id
-				"",           // parent
-				"",           // ttl
-				&now,         // _timestamp
-				payload,
+				nil,          // args
+				payload,      // payload
 			)
 			if err != nil {
 				log.WithError(err).Warn("Error sending data to elasticsearch -- retrying")
 				client = reconnect(log, config)
 				resend = true
 			} else {
-				log.Debug("Sent")
+				log.Debugf("Sent %+v", rsp)
 				stats.esSent++
 			}
 		}
@@ -163,10 +144,4 @@ func reconnect(log *logrus.Entry, config *elasticConfig) *elastigo.Conn {
 	}
 	log.Fatalf("Failed to reconnect to elasticsearch after %d attempts", config.ReconnectAttempts)
 	return nil
-}
-
-func logErrors(indexer *elastigo.BulkIndexer, log *logrus.Entry) {
-	for errBuf := range indexer.ErrorChannel {
-		log.WithError(errBuf.Err).Warn("Trouble sending message to ES")
-	}
 }

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"log"
 	"os"
-	"sync"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -70,8 +69,6 @@ func run(configFile string) {
 	}
 
 	// build all the tailers
-	wg := sync.WaitGroup{}
-	funcs := make([]func(), 0, len(config.Subjects))
 	for _, pair := range config.Subjects {
 		log := rootLog.WithFields(logrus.Fields{
 			"subject": pair.Subject,
@@ -80,59 +77,33 @@ func run(configFile string) {
 		log.Debug("Connecting channel")
 
 		var err error
-		var sub *nats.Subscription
 		if pair.Group == "" {
-			sub, err = nc.SubscribeSync(pair.Subject)
+			_, err = nc.Subscribe(pair.Subject, processMsg(clientChannel, stats))
 		} else {
-			sub, err = nc.QueueSubscribeSync(pair.Subject, pair.Group)
+			_, err = nc.QueueSubscribe(pair.Subject, pair.Group, processMsg(clientChannel, stats))
 		}
 		if err != nil {
 			log.WithError(err).Fatal("Failed to subscribe")
 		}
-
-		wg.Add(1)
-		f := func() {
-			log.Info("Starting to consume")
-			err := consumeForever(sub, clientChannel, stats)
-			if err != nil {
-				log.WithError(err).Warn("Problem while consuming messages")
-			}
-			log.Info("Finished consuming")
-			wg.Done()
-		}
-
-		funcs = append(funcs, f)
 	}
 
-	// launch all the tailers
-	for _, f := range funcs {
-		go f()
-	}
-
-	wg.Wait()
-	rootLog.Info("Shutting down")
+	rootLog.Info("Subscribed to all subject/groups - waiting")
+	select {}
 }
 
-func consumeForever(sub *nats.Subscription, toSend chan<- *payload, stats *counters) error {
-	for {
-		m, err := sub.NextMsg(time.Hour * 12)
-		if err != nil {
-			if err != nats.ErrTimeout {
-				return err
-			}
-		}
-
-		// DO NOT BLOCK
-		// nats is truely a fire and forget, we need to get make sure we are ready to
-		// take off the subject immediately. And we can have tons of go routines so
-		// this seems like the natural pairing.
+func processMsg(clientChannel chan<- *payload, stats *counters) func(*nats.Msg) {
+	// DO NOT BLOCK
+	// nats is truely a fire and forget, we need to get make sure we are ready to
+	// take off the subject immediately. And we can have tons of go routines so
+	// this seems like the natural pairing.
+	return func(m *nats.Msg) {
 		go func() {
 			payload := newPayload(string(m.Data), m.Subject)
 
 			// maybe it is json!
 			_ = json.Unmarshal(m.Data, payload)
 
-			toSend <- payload
+			clientChannel <- payload
 		}()
 	}
 }

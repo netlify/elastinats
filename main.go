@@ -82,9 +82,9 @@ func run(configFile string) {
 		var err error
 		var sub *nats.Subscription
 		if pair.Group == "" {
-			sub, err = nc.Subscribe(pair.Subject, processMsg)
+			sub, err = nc.SubscribeSync(pair.Subject)
 		} else {
-			sub, err = nc.QueueSubscribe(pair.Subject, pair.Group, processMsg)
+			sub, err = nc.QueueSubscribeSync(pair.Subject, pair.Group)
 		}
 		if err != nil {
 			log.WithError(err).Fatal("Failed to subscribe")

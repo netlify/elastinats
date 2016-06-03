@@ -97,6 +97,7 @@ func processMsg(clientChannel chan<- *payload, stats *counters) func(*nats.Msg) 
 	// take off the subject immediately. And we can have tons of go routines so
 	// this seems like the natural pairing.
 	return func(m *nats.Msg) {
+		stats.natsConsumed++
 		go func() {
 			payload := newPayload(string(m.Data), m.Subject)
 

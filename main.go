@@ -79,12 +79,12 @@ func run(configFile string) {
 		})
 		log.Debug("Connecting channel")
 
-		c := make(chan *nats.Msg)
 		var err error
+		var sub *nats.Subscription
 		if pair.Group == "" {
-			_, err = nc.ChanSubscribe(pair.Subject, c)
+			sub, err = nc.Subscribe(pair.Subject, processMsg)
 		} else {
-			_, err = nc.ChanQueueSubscribe(pair.Subject, pair.Group, c)
+			sub, err = nc.QueueSubscribe(pair.Subject, pair.Group, processMsg)
 		}
 		if err != nil {
 			log.WithError(err).Fatal("Failed to subscribe")
@@ -93,7 +93,10 @@ func run(configFile string) {
 		wg.Add(1)
 		f := func() {
 			log.Info("Starting to consume")
-			consumeForever(c, clientChannel, stats)
+			err := consumeForever(sub, clientChannel, stats)
+			if err != nil {
+				log.WithError(err).Warn("Problem while consuming messages")
+			}
 			log.Info("Finished consuming")
 			wg.Done()
 		}
@@ -110,10 +113,14 @@ func run(configFile string) {
 	rootLog.Info("Shutting down")
 }
 
-func consumeForever(natsSubj chan *nats.Msg, toSend chan<- *payload, stats *counters) {
-	for msg := range natsSubj {
-		stats.natsConsumed++
-		m := msg
+func consumeForever(sub *nats.Subscription, toSend chan<- *payload, stats *counters) error {
+	for {
+		m, err := sub.NextMsg(time.Hour * 12)
+		if err != nil {
+			if err != nats.ErrTimeout {
+				return err
+			}
+		}
 
 		// DO NOT BLOCK
 		// nats is truely a fire and forget, we need to get make sure we are ready to

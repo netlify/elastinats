@@ -1,18 +1,22 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"time"
 
 	"github.com/Sirupsen/logrus"
-	"github.com/mattbaird/elastigo/lib"
 )
 
 const (
 	rawMsgKey    = "@raw_msg"
 	timestampKey = "@timestamp"
 	sourceKey    = "@source"
+
+	indexCommand = `{ "index": {} }`
 )
 
 type payload map[string]interface{}
@@ -33,26 +37,6 @@ type elasticConfig struct {
 	ReconnectAttempts int      `json:"reconnect_attempts"`
 	BatchSize         int      `json:"batch_size"`
 	BatchTimeoutSec   int      `json:"batch_timeout_sec"`
-}
-
-func (config elasticConfig) connectToES(log *logrus.Entry) (*elastigo.Conn, error) {
-	conn := elastigo.NewConn()
-	if config.Port > 0 {
-		conn.SetPort(fmt.Sprintf("%d", config.Port))
-	}
-
-	if config.Trace {
-		conn.RequestTracer = func(method, url, body string) {
-			log.WithFields(logrus.Fields{
-				"component": "es",
-				"method":    method,
-				"url":       url,
-				"trace":     true,
-			}).Info(body)
-		}
-	}
-	conn.Hosts = config.Hosts
-	return conn, nil
 }
 
 func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counters, log *logrus.Entry) {
@@ -97,51 +81,38 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 		"batch_id": rand.Int(),
 	})
 
-	client, err := config.connectToES(log)
-	if err != nil {
-		log.WithError(err).Fatal("Failed to connect to elasticsearch")
-	}
-	log.Debug("Connected to elasticseach")
-	defer client.Close()
-
+	// build the payload
+	buff := bytes.NewBuffer(nil)
 	for _, in := range batch {
-		payload := *in
-		resend := true
-		for resend {
-			resend = false
-			log.Debugf("Sending to ES: %s", payload)
-
-			rsp, err := client.Index(
-				config.Index, // index
-				"log_line",   // _type
-				"",           // _id
-				nil,          // args
-				payload,      // payload
-			)
-			if err != nil {
-				log.WithError(err).Warn("Error sending data to elasticsearch -- retrying")
-				client = reconnect(log, config)
-				resend = true
-			} else {
-				log.Debugf("Sent %+v", rsp)
-				stats.esSent++
-			}
-		}
-	}
-}
-
-func reconnect(log *logrus.Entry, config *elasticConfig) *elastigo.Conn {
-	times := 0
-	for ; times < config.ReconnectAttempts; times++ {
-		log.Debugf("reconnecting attempt %d/%d", times+1, config.ReconnectAttempts)
-		client, err := config.connectToES(log)
+		// serialize the payload
+		asBytes, err := json.Marshal(in)
 		if err == nil {
-			log.Infof("Reconnected after %d attempts", times+1)
-			return client
+			// we don't have to specify the _index || _type b/c we are going to
+			// encode that in the URL. Hence the simple index command
+			buff.WriteString(indexCommand)
+			buff.WriteRune('\n')
+			buff.Write(asBytes)
+			buff.WriteRune('\n')
+		} else {
+			log.WithError(err).Warn("Failed to marshal the input")
 		}
-
-		log.WithError(err).Warn("Failed to reconnect attempt %d", times+1)
 	}
-	log.Fatalf("Failed to reconnect to elasticsearch after %d attempts", config.ReconnectAttempts)
-	return nil
+
+	host := config.Hosts[rand.Intn(len(config.Hosts))]
+
+	// http://<HOST>:<PORT>/_index/_type -- encode the index and type here so we don't
+	// send it in the body with each batch
+	endpoint := fmt.Sprintf("http://%s:%d/%s/%s/_bulk", host, config.Port, config.Index, "log_line")
+
+	resp, err := http.Post(endpoint, "text/plain", buff)
+	if err != nil {
+		log.WithError(err).WithField("endpoint", endpoint).Warn("Failed to post to elasticsearch")
+	} else {
+		if resp.StatusCode != 200 {
+			log.Warn("Failed to post batch")
+		} else {
+			log.Debug("Completed post")
+			stats.esSent++
+		}
+	}
 }

@@ -58,7 +58,7 @@ func run(configFile string) {
 	// connect to ES
 	clientChannel := make(chan *payload)
 	stats := new(counters)
-	go reportStats(config.ReportSec, stats, rootLog)
+	go reportStats(config.ReportSec, config, stats, rootLog)
 
 	go batchAndSend(&config.ElasticConf, clientChannel, stats, rootLog)
 
@@ -110,7 +110,7 @@ func processMsg(clientChannel chan<- *payload, stats *counters) func(*nats.Msg) 
 	}
 }
 
-func reportStats(reportSec int64, stats *counters, log *logrus.Entry) {
+func reportStats(reportSec int64, config *configuration, stats *counters, log *logrus.Entry) {
 	if reportSec == 0 {
 		log.Debug("Stats reporting disabled")
 		return
@@ -119,9 +119,11 @@ func reportStats(reportSec int64, stats *counters, log *logrus.Entry) {
 	ticks := time.Tick(time.Second * time.Duration(reportSec))
 	for range ticks {
 		log.WithFields(logrus.Fields{
-			"messages_rx": stats.natsConsumed,
-			"messages_tx": stats.esSent,
-			"batches_tx":  stats.batchesSent,
+			"messages_rx":   stats.natsConsumed,
+			"messages_tx":   stats.esSent,
+			"batches_tx":    stats.batchesSent,
+			"batch_size":    config.ElasticConf.BatchSize,
+			"batch_timeout": config.ElasticConf.BatchTimeoutSec,
 		}).Info("status report")
 	}
 }

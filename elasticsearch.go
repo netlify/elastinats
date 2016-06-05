@@ -112,7 +112,8 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 			log.Warn("Failed to post batch")
 		} else {
 			log.Debug("Completed post")
-			stats.esSent++
+			stats.esSent += len(batch)
+			stats.batchesSent++
 		}
 	}
 }

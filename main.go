@@ -18,6 +18,7 @@ var rootLog *logrus.Entry
 type counters struct {
 	natsConsumed int64
 	esSent       int64
+	batchesSent  int64
 }
 
 func main() {
@@ -120,6 +121,7 @@ func reportStats(reportSec int64, stats *counters, log *logrus.Entry) {
 		log.WithFields(logrus.Fields{
 			"messages_rx": stats.natsConsumed,
 			"messages_tx": stats.esSent,
-		}).Info("processed messages from nats to es")
+			"batches_tx":  stats.batchesSent,
+		}).Info("status report")
 	}
 }

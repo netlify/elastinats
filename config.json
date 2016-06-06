@@ -1,4 +1,5 @@
 {
+  "report_sec": 5,
   "nats_conf": {
     "servers": ["nats://nats.lo:4222"],
     "cert_file": "/usr/local/etc/certs/test.pem",
@@ -13,7 +14,7 @@
     "trace": true,
     "reconnect_attempts": 5,
     "batch_size": 100,
-    "batch_timeout_sec": 10
+    "batch_timeout_sec": 5
   },
   "log_conf": {
     "log_level": "DEBUG",

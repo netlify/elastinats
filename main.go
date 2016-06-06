@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"os"
+	"runtime"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -117,8 +118,21 @@ func reportStats(reportSec int64, config *configuration, stats *counters, log *l
 	}
 
 	ticks := time.Tick(time.Second * time.Duration(reportSec))
+	memstats := new(runtime.MemStats)
 	for range ticks {
+		runtime.ReadMemStats(memstats)
+
 		log.WithFields(logrus.Fields{
+			"go_routines":   runtime.NumGoroutine(),
+			"total_alloc":   memstats.TotalAlloc,
+			"current_alloc": memstats.Alloc,
+			"mem_sys":       memstats.Sys,
+			"mallocs":       memstats.Mallocs,
+			"frees":         memstats.Frees,
+			"heap_in_use":   memstats.HeapInuse,
+			"heap_idle":     memstats.HeapIdle,
+			"heap_sys":      memstats.HeapSys,
+			"heap_released": memstats.HeapReleased,
 			"messages_rx":   stats.natsConsumed,
 			"messages_tx":   stats.esSent,
 			"batches_tx":    stats.batchesSent,

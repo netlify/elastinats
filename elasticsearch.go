@@ -54,6 +54,8 @@ func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counte
 
 	batch := make([]*payload, 0, config.BatchSize)
 
+	sendTimeout := time.Tick(time.Duration(config.BatchTimeoutSec) * time.Second)
+
 	for {
 		select {
 		case in := <-incoming:
@@ -63,7 +65,7 @@ func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counte
 				go sendToES(config, log, stats, batch)
 				batch = make([]*payload, 0, config.BatchSize)
 			}
-		case <-time.After(time.Duration(config.BatchTimeoutSec) * time.Second):
+		case <-sendTimeout:
 			log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
 			go sendToES(config, log, stats, batch)
 			batch = make([]*payload, 0, config.BatchSize)

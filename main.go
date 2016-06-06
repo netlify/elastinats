@@ -57,7 +57,7 @@ func run(configFile string) {
 	rootLog.Info("Configured - starting to connect and consume")
 
 	// connect to ES
-	clientChannel := make(chan *payload)
+	clientChannel := make(chan payload)
 	stats := new(counters)
 	go reportStats(config.ReportSec, config, stats, rootLog)
 
@@ -93,7 +93,7 @@ func run(configFile string) {
 	select {}
 }
 
-func processMsg(clientChannel chan<- *payload, stats *counters) func(*nats.Msg) {
+func processMsg(clientChannel chan<- payload, stats *counters) func(*nats.Msg) {
 	// DO NOT BLOCK
 	// nats is truely a fire and forget, we need to get make sure we are ready to
 	// take off the subject immediately. And we can have tons of go routines so
@@ -106,7 +106,7 @@ func processMsg(clientChannel chan<- *payload, stats *counters) func(*nats.Msg) 
 			// maybe it is json!
 			_ = json.Unmarshal(m.Data, payload)
 
-			clientChannel <- payload
+			clientChannel <- *payload
 		}()
 	}
 }

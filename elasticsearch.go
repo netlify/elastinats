@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/Sirupsen/logrus"
@@ -20,6 +22,12 @@ const (
 )
 
 type payload map[string]interface{}
+
+var pool = sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(nil)
+	},
+}
 
 func newPayload(msg, source string) *payload {
 	return &payload{
@@ -37,9 +45,17 @@ type elasticConfig struct {
 	ReconnectAttempts int      `json:"reconnect_attempts"`
 	BatchSize         int      `json:"batch_size"`
 	BatchTimeoutSec   int      `json:"batch_timeout_sec"`
+
+	client *http.Client
 }
 
-func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counters, log *logrus.Entry) {
+func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counters, log *logrus.Entry) {
+	if config.client == nil {
+		config.client = &http.Client{
+			Timeout: time.Second * 2,
+		}
+	}
+
 	log = log.WithFields(logrus.Fields{
 		"index": config.Index,
 	})
@@ -52,7 +68,7 @@ func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counte
 		"batch_timeout": config.BatchTimeoutSec,
 	}).Info("Starting to consume forever and batch send to ES")
 
-	batch := make([]*payload, 0, config.BatchSize)
+	batch := make([]payload, 0, config.BatchSize)
 
 	sendTimeout := time.Tick(time.Duration(config.BatchTimeoutSec) * time.Second)
 
@@ -62,19 +78,31 @@ func batchAndSend(config *elasticConfig, incoming <-chan *payload, stats *counte
 			batch = append(batch, in)
 			if len(batch) >= config.BatchSize {
 				log.WithField("size", len(batch)).Debug("Sending batch because of size")
-				go sendToES(config, log, stats, batch)
-				batch = make([]*payload, 0, config.BatchSize)
+
+				toSend := make([]payload, len(batch))
+				copy(toSend, batch)
+				batch = make([]payload, 0, config.BatchSize)
+
+				go sendToES(config, log, stats, toSend)
 			}
 		case <-sendTimeout:
 			log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
-			go sendToES(config, log, stats, batch)
-			batch = make([]*payload, 0, config.BatchSize)
+
+			toSend := make([]payload, len(batch))
+			copy(toSend, batch)
+			batch = make([]payload, 0, config.BatchSize)
+
+			go sendToES(config, log, stats, toSend)
 		}
 	}
 }
 
-func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch []*payload) {
+func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch []payload) {
 	if len(batch) == 0 {
+		return
+	}
+	if config.client == nil {
+		log.Warn("Tried to send with a nil client")
 		return
 	}
 
@@ -84,7 +112,10 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 	})
 
 	// build the payload
-	buff := bytes.NewBuffer(nil)
+	buff := pool.Get().(*bytes.Buffer)
+	buff.Reset()
+	defer pool.Put(buff)
+
 	for _, in := range batch {
 		// serialize the payload
 		asBytes, err := json.Marshal(in)
@@ -106,16 +137,18 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 	// send it in the body with each batch
 	endpoint := fmt.Sprintf("http://%s:%d/%s/%s/_bulk", host, config.Port, config.Index, "log_line")
 
-	resp, err := http.Post(endpoint, "text/plain", buff)
+	start := time.Now()
+	resp, err := config.client.Post(endpoint, "text/plain", buff)
+	elapsed := time.Since(start)
 	if err != nil {
 		log.WithError(err).WithField("endpoint", endpoint).Warn("Failed to post to elasticsearch")
 	} else {
 		if resp.StatusCode != 200 {
 			log.Warn("Failed to post batch")
 		} else {
-			log.Debug("Completed post")
-			stats.esSent += int64(len(batch))
-			stats.batchesSent++
+			log.WithField("elapsed", elapsed).Debugf("Completed post in %s", elapsed)
+			atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
+			atomic.AddInt64(&(*stats).batchesSent, 1)
 		}
 	}
 }

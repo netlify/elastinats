@@ -135,24 +135,43 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 	// send it in the body with each batch
 	endpoint := fmt.Sprintf("http://%s:%d/%s/%s/_bulk", host, config.Port, config.Index, "log_line")
 
+	atomic.AddInt64(&(*stats).batchesSent, 1)
+	atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
+
 	start := time.Now()
 	resp, err := config.client.Post(endpoint, "text/plain", buff)
 	elapsed := time.Since(start)
 	if err != nil {
 		log.WithError(err).WithField("endpoint", endpoint).Warn("Failed to post to elasticsearch")
-	} else {
-		defer resp.Body.Close()
-		body, err := ioutil.ReadAll(resp.Body)
-		if err != nil {
-			log.WithError(err).Warn("Failed to read the response body")
-		} else {
-			if resp.StatusCode != 200 {
-				log.Warn("Failed to post batch: %s", string(body))
-			} else {
-				log.WithField("elapsed", elapsed).Debugf("Completed post in %s: %s", elapsed, string(body))
-				atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
-				atomic.AddInt64(&(*stats).batchesSent, 1)
-			}
+		atomic.AddInt64(&(*stats).batchesFailed, 1)
+		return
+	}
+
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		log.WithError(err).Warn("Failed to read the response body")
+		return
+	}
+
+	parsed := make(map[string]interface{})
+	err = json.Unmarshal(body, parsed)
+	if err != nil {
+		log.WithError(err).Warn("Failed to parse the response body")
+		return
+	}
+
+	if resp.StatusCode != 200 {
+		log.Warn("Failed to post batch: %s", string(body))
+		atomic.AddInt64(&(*stats).batchesFailed, 1)
+		return
+	}
+
+	if errs, ok := parsed["errors"]; ok {
+		if errs.(bool) {
+			log.WithField("elapsed", elapsed).Warn("Error from elasticsearch")
+			atomic.AddInt64(&(*stats).batchesFailed, 1)
 		}
 	}
+	log.WithField("elapsed", elapsed).Debugf("Completed post in %s: %s", elapsed, string(body))
 }

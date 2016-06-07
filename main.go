@@ -17,9 +17,10 @@ import (
 var rootLog *logrus.Entry
 
 type counters struct {
-	natsConsumed int64
-	esSent       int64
-	batchesSent  int64
+	natsConsumed  int64
+	esSent        int64
+	batchesSent   int64
+	batchesFailed int64
 }
 
 func main() {
@@ -123,21 +124,22 @@ func reportStats(reportSec int64, config *configuration, stats *counters, log *l
 		runtime.ReadMemStats(memstats)
 
 		log.WithFields(logrus.Fields{
-			"go_routines":   runtime.NumGoroutine(),
-			"total_alloc":   memstats.TotalAlloc,
-			"current_alloc": memstats.Alloc,
-			"mem_sys":       memstats.Sys,
-			"mallocs":       memstats.Mallocs,
-			"frees":         memstats.Frees,
-			"heap_in_use":   memstats.HeapInuse,
-			"heap_idle":     memstats.HeapIdle,
-			"heap_sys":      memstats.HeapSys,
-			"heap_released": memstats.HeapReleased,
-			"messages_rx":   stats.natsConsumed,
-			"messages_tx":   stats.esSent,
-			"batches_tx":    stats.batchesSent,
-			"batch_size":    config.ElasticConf.BatchSize,
-			"batch_timeout": config.ElasticConf.BatchTimeoutSec,
+			"go_routines":    runtime.NumGoroutine(),
+			"total_alloc":    memstats.TotalAlloc,
+			"current_alloc":  memstats.Alloc,
+			"mem_sys":        memstats.Sys,
+			"mallocs":        memstats.Mallocs,
+			"frees":          memstats.Frees,
+			"heap_in_use":    memstats.HeapInuse,
+			"heap_idle":      memstats.HeapIdle,
+			"heap_sys":       memstats.HeapSys,
+			"heap_released":  memstats.HeapReleased,
+			"messages_rx":    stats.natsConsumed,
+			"messages_tx":    stats.esSent,
+			"batches_tx":     stats.batchesSent,
+			"batches_failed": stats.batchesFailed,
+			"batch_size":     config.ElasticConf.BatchSize,
+			"batch_timeout":  config.ElasticConf.BatchTimeoutSec,
 		}).Info("status report")
 	}
 }

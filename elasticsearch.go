@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -38,13 +39,11 @@ func newPayload(msg, source string) *payload {
 }
 
 type elasticConfig struct {
-	Index             string   `json:"index"`
-	Hosts             []string `json:"hosts"`
-	Port              int      `json:"port"`
-	Trace             bool     `json:"trace"`
-	ReconnectAttempts int      `json:"reconnect_attempts"`
-	BatchSize         int      `json:"batch_size"`
-	BatchTimeoutSec   int      `json:"batch_timeout_sec"`
+	Index           string   `json:"index"`
+	Hosts           []string `json:"hosts"`
+	Port            int      `json:"port"`
+	BatchSize       int      `json:"batch_size"`
+	BatchTimeoutSec int      `json:"batch_timeout_sec"`
 
 	client *http.Client
 }
@@ -63,7 +62,6 @@ func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counter
 	log.WithFields(logrus.Fields{
 		"hosts":         config.Hosts,
 		"port":          config.Port,
-		"trace":         config.Trace,
 		"batch_size":    config.BatchSize,
 		"batch_timeout": config.BatchTimeoutSec,
 	}).Info("Starting to consume forever and batch send to ES")
@@ -143,12 +141,18 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 	if err != nil {
 		log.WithError(err).WithField("endpoint", endpoint).Warn("Failed to post to elasticsearch")
 	} else {
-		if resp.StatusCode != 200 {
-			log.Warn("Failed to post batch")
+		defer resp.Body.Close()
+		body, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			log.WithError(err).Warn("Failed to read the response body")
 		} else {
-			log.WithField("elapsed", elapsed).Debugf("Completed post in %s", elapsed)
-			atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
-			atomic.AddInt64(&(*stats).batchesSent, 1)
+			if resp.StatusCode != 200 {
+				log.Warn("Failed to post batch: %s", string(body))
+			} else {
+				log.WithField("elapsed", elapsed).Debugf("Completed post in %s: %s", elapsed, string(body))
+				atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
+				atomic.AddInt64(&(*stats).batchesSent, 1)
+			}
 		}
 	}
 }

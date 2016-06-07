@@ -11,8 +11,6 @@
     "hosts": [ "elastic.lo" ],
     "index": "logs",
     "port": 9200,
-    "trace": true,
-    "reconnect_attempts": 5,
     "batch_size": 100,
     "batch_timeout_sec": 5
   },

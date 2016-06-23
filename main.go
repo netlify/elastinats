@@ -62,7 +62,8 @@ func run(configFile string) {
 	stats := new(counters)
 	go reportStats(config.ReportSec, config, stats, rootLog)
 
-	go batchAndSend(&config.ElasticConf, clientChannel, stats, rootLog)
+	// non-blocking call, it launches a routine to do the consuming
+	batchAndSend(&config.ElasticConf, clientChannel, stats, rootLog)
 
 	// connect to NATS
 	rootLog.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")

@@ -48,7 +48,7 @@ type elasticConfig struct {
 	client *http.Client
 }
 
-func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counters, log *logrus.Entry) {
+func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counters, log *logrus.Entry) chan<- bool {
 	if config.client == nil {
 		config.client = &http.Client{
 			Timeout: time.Second * 2,
@@ -69,30 +69,39 @@ func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counter
 	batch := make([]payload, 0, config.BatchSize)
 
 	sendTimeout := time.Tick(time.Duration(config.BatchTimeoutSec) * time.Second)
+	shutdown := make(chan bool)
 
-	for {
-		select {
-		case in := <-incoming:
-			batch = append(batch, in)
-			if len(batch) >= config.BatchSize {
-				log.WithField("size", len(batch)).Debug("Sending batch because of size")
+	// spawn this off to a child routine
+	go func() {
+		for {
+			select {
+			case in := <-incoming:
+				batch = append(batch, in)
+				if len(batch) >= config.BatchSize {
+					log.WithField("size", len(batch)).Debug("Sending batch because of size")
+
+					toSend := make([]payload, len(batch))
+					copy(toSend, batch)
+					batch = make([]payload, 0, config.BatchSize)
+
+					go sendToES(config, log, stats, toSend)
+				}
+			case <-sendTimeout:
+				log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
 
 				toSend := make([]payload, len(batch))
 				copy(toSend, batch)
 				batch = make([]payload, 0, config.BatchSize)
 
 				go sendToES(config, log, stats, toSend)
+			case <-shutdown:
+				log.Debug("Shutting down")
+				break
 			}
-		case <-sendTimeout:
-			log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
-
-			toSend := make([]payload, len(batch))
-			copy(toSend, batch)
-			batch = make([]payload, 0, config.BatchSize)
-
-			go sendToES(config, log, stats, toSend)
 		}
-	}
+	}()
+
+	return shutdown
 }
 
 func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch []payload) {
@@ -154,23 +163,25 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 		return
 	}
 
-	parsed := make(map[string]interface{})
-	err = json.Unmarshal(body, parsed)
-	if err != nil {
-		log.WithError(err).Warn("Failed to parse the response body")
-		return
-	}
-
 	if resp.StatusCode != 200 {
-		log.Warn("Failed to post batch: %s", string(body))
+		log.Warnf("Failed to post batch: %s", string(body))
 		atomic.AddInt64(&(*stats).batchesFailed, 1)
 		return
 	}
 
-	if errs, ok := parsed["errors"]; ok {
-		if errs.(bool) {
-			log.WithField("elapsed", elapsed).Warn("Error from elasticsearch")
-			atomic.AddInt64(&(*stats).batchesFailed, 1)
+	if resp.Header.Get("Content-Type") == "application/json" {
+		parsed := make(map[string]interface{})
+		err = json.Unmarshal(body, &parsed)
+		if err != nil {
+			log.WithError(err).Warn("Failed to parse the response body")
+			return
+		}
+
+		if errs, ok := parsed["errors"]; ok {
+			if errs.(bool) {
+				log.WithField("elapsed", elapsed).Warn("Error from elasticsearch")
+				atomic.AddInt64(&(*stats).batchesFailed, 1)
+			}
 		}
 	}
 	log.WithField("elapsed", elapsed).Debugf("Completed post in %s: %s", elapsed, string(body))

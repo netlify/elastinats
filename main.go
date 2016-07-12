@@ -44,8 +44,7 @@ func main() {
 }
 
 func run(configFile string) {
-	config := new(configuration)
-	err := loadFromFile(configFile, config)
+	config, err := loadFromFile(configFile)
 	if err != nil {
 		log.Fatalf("Failed to load configuation: %s %v", configFile, err)
 	}
@@ -57,7 +56,6 @@ func run(configFile string) {
 
 	rootLog.Info("Configured - starting to connect and consume")
 
-	// connect to ES
 	clientChannel := make(chan payload)
 	stats := new(counters)
 	go reportStats(config.ReportSec, config, stats, rootLog)

@@ -30,6 +30,10 @@ var pool = sync.Pool{
 	},
 }
 
+var client = http.Client{
+	Timeout: time.Second * 2,
+}
+
 func newPayload(msg, source string) *payload {
 	return &payload{
 		rawMsgKey:    msg,
@@ -38,27 +42,7 @@ func newPayload(msg, source string) *payload {
 	}
 }
 
-type elasticConfig struct {
-	Index           string   `json:"index"`
-	Hosts           []string `json:"hosts"`
-	Port            int      `json:"port"`
-	BatchSize       int      `json:"batch_size"`
-	BatchTimeoutSec int      `json:"batch_timeout_sec"`
-
-	client *http.Client
-}
-
 func batchAndSend(config *elasticConfig, incoming <-chan payload, stats *counters, log *logrus.Entry) chan<- bool {
-	if config.client == nil {
-		config.client = &http.Client{
-			Timeout: time.Second * 2,
-		}
-	}
-
-	log = log.WithFields(logrus.Fields{
-		"index": config.Index,
-	})
-
 	log.WithFields(logrus.Fields{
 		"hosts":         config.Hosts,
 		"port":          config.Port,
@@ -108,15 +92,21 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 	if len(batch) == 0 {
 		return
 	}
-	if config.client == nil {
-		log.Warn("Tried to send with a nil client")
-		return
-	}
 
 	log = log.WithFields(logrus.Fields{
 		"size":     len(batch),
 		"batch_id": rand.Int(),
 	})
+
+	host := config.Hosts[rand.Intn(len(config.Hosts))]
+	log = log.WithField("host", host)
+
+	index, err := config.GetIndex(time.Now().UTC())
+	if err != nil {
+		log.Errorf("Failed to parse index from string %s", config.Index)
+		return
+	}
+	log = log.WithField("index", index)
 
 	// build the payload
 	buff := pool.Get().(*bytes.Buffer)
@@ -138,17 +128,15 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 		}
 	}
 
-	host := config.Hosts[rand.Intn(len(config.Hosts))]
-
 	// http://<HOST>:<PORT>/_index/_type -- encode the index and type here so we don't
 	// send it in the body with each batch
-	endpoint := fmt.Sprintf("http://%s:%d/%s/%s/_bulk", host, config.Port, config.Index, "log_line")
+	endpoint := fmt.Sprintf("http://%s:%d/%s/%s/_bulk", host, config.Port, index, "log_line")
 
 	atomic.AddInt64(&(*stats).batchesSent, 1)
 	atomic.AddInt64(&(*stats).esSent, int64(len(batch)))
 
 	start := time.Now()
-	resp, err := config.client.Post(endpoint, "text/plain", buff)
+	resp, err := client.Post(endpoint, "text/plain", buff)
 	elapsed := time.Since(start)
 	if err != nil {
 		log.WithError(err).WithField("endpoint", endpoint).Warn("Failed to post to elasticsearch")

@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"io/ioutil"
+	"text/template"
+	"time"
 
 	"github.com/netlify/messaging"
 )
@@ -20,16 +24,46 @@ type subjectAndGroup struct {
 	Group   string `json:"group"`
 }
 
-func loadFromFile(configFile string, configStruct interface{}) error {
+type elasticConfig struct {
+	Index           string   `json:"index"`
+	Hosts           []string `json:"hosts"`
+	Port            int      `json:"port"`
+	BatchSize       int      `json:"batch_size"`
+	BatchTimeoutSec int      `json:"batch_timeout_sec"`
+
+	indexTemplate *template.Template
+}
+
+func (e *elasticConfig) GetIndex(t time.Time) (string, error) {
+	if e.Index == "" {
+		return "", errors.New("No index configured")
+	}
+
+	if e.indexTemplate == nil {
+		var err error
+		e.indexTemplate, err = template.New("index_template").Parse(e.Index)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	b := bytes.NewBufferString("")
+	err := e.indexTemplate.Execute(b, t)
+
+	return b.String(), err
+}
+
+func loadFromFile(configFile string) (*configuration, error) {
 	data, err := ioutil.ReadFile(configFile)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	err = json.Unmarshal(data, configStruct)
+	config := new(configuration)
+	err = json.Unmarshal(data, config)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	return config, nil
 }

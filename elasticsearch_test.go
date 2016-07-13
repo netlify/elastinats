@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -54,7 +55,7 @@ func TestSendOnBatchSize(t *testing.T) {
 func TestErrorParsing(t *testing.T) {
 	var req *http.Request
 	config := getConfig()
-	config.client.Transport = testTransport{
+	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
 			response := `{ "errors": true }`
@@ -81,7 +82,7 @@ func TestErrorParsing(t *testing.T) {
 func TestSendBatchMessageIsOk(t *testing.T) {
 	var req *http.Request
 	config := getConfig()
-	config.client.Transport = testTransport{
+	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
 			return goodResponse, nil
@@ -100,7 +101,7 @@ func TestSendBatchMessageIsOk(t *testing.T) {
 func TestErrorStatus(t *testing.T) {
 	var req *http.Request
 	config := getConfig()
-	config.client.Transport = testTransport{
+	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
 			badResponse := &http.Response{
@@ -124,7 +125,6 @@ func TestErrorStatus(t *testing.T) {
 
 func TestMissingClient(t *testing.T) {
 	config := getConfig()
-	config.client = nil
 
 	stats := new(counters)
 	sendToES(config, testLog, stats, []payload{})
@@ -136,7 +136,7 @@ func TestMissingClient(t *testing.T) {
 
 func TestSkipEmpties(t *testing.T) {
 	config := getConfig()
-	config.client.Transport = testTransport{
+	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			assert.FailNow(t, "Shouldn't have sent anything")
 			return nil, nil
@@ -150,17 +150,47 @@ func TestSkipEmpties(t *testing.T) {
 	assert.Equal(t, int64(0), stats.esSent)
 }
 
+func TestIndexFormatIsRespected(t *testing.T) {
+	config := getConfig()
+	config.Index = "test_{{.Year}}_{{.Month}}_{{.Day}}"
+	now := time.Now().UTC()
+	stats := new(counters)
+	client.Transport = testTransport{
+		delegate: func(r *http.Request) (*http.Response, error) {
+			dateString := fmt.Sprintf("test_%d_%s_%d", now.Year(), now.Month(), now.Day())
+			assert.Equal(t, "/"+dateString+"/log_line/_bulk", r.URL.Path)
+			return goodResponse, nil
+		},
+	}
+
+	sendToES(config, testLog, stats, loads)
+}
+
+func TestBadFormatForIndex(t *testing.T) {
+	config := getConfig()
+	config.Index = "test_{{if }}"
+	stats := new(counters)
+	client.Transport = testTransport{
+		delegate: func(r *http.Request) (*http.Response, error) {
+			assert.FailNow(t, "shouldn't have sent anything")
+			return nil, nil
+		},
+	}
+
+	sendToES(config, testLog, stats, loads)
+}
+
 // --------------------------------------------------------------------------------------------------------------------
 
 func getConfig() *elasticConfig {
-	return &elasticConfig{
+	c := elasticConfig{
 		Index:           "quotes",
 		Hosts:           []string{"first", "second"},
 		Port:            80,
 		BatchSize:       10,
 		BatchTimeoutSec: 10,
-		client:          &http.Client{},
 	}
+	return &c
 }
 
 type testTransport struct {
@@ -173,7 +203,7 @@ func (tt testTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 
 func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *counters {
 	reqChan := make(chan *http.Request)
-	config.client.Transport = testTransport{
+	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			reqChan <- r
 			return goodResponse, nil

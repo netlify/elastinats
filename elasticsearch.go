@@ -157,20 +157,66 @@ func sendToES(config *elasticConfig, log *logrus.Entry, stats *counters, batch [
 		return
 	}
 
-	if resp.Header.Get("Content-Type") == "application/json" {
-		parsed := make(map[string]interface{})
-		err = json.Unmarshal(body, &parsed)
+	completeLog := log.WithFields(logrus.Fields{
+		"index":       index,
+		"host":        host,
+		"endpoint":    endpoint,
+		"status_code": resp.StatusCode,
+	})
+
+	if len(body) != 0 {
+		// responds with json always - let's check for errors in it
+		type response struct {
+			Errors bool `json:"errors"`
+			Items  []struct {
+				Index struct {
+					Error string `json:"error"`
+				} `json:"index"`
+			} `json:"items"`
+		}
+		parsed := new(response)
+		err = json.Unmarshal(body, parsed)
 		if err != nil {
-			log.WithError(err).Warn("Failed to parse the response body")
+			completeLog.WithError(err).Warnf("Failed to parse the response body: %s", string(body))
 			return
 		}
 
-		if errs, ok := parsed["errors"]; ok {
-			if errs.(bool) {
-				log.WithField("elapsed", elapsed).Warn("Error from elasticsearch")
-				atomic.AddInt64(&(*stats).batchesFailed, 1)
+		if parsed.Errors {
+			// we had some errors - lets collect them and let people know
+			atomic.AddInt64(&(*stats).batchesFailed, 1)
+
+			errs := make(map[string]int)
+			for _, item := range parsed.Items {
+				errs[item.Index.Error] = errs[item.Index.Error] + 1
 			}
+
+			// make the empty error more obvious
+			errs["no error"] = errs[""]
+			delete(errs, "")
+
+			type errReport struct {
+				Msg   string `json:"msg"`
+				Count int    `json:"count"`
+			}
+			report := []errReport{}
+			for e, c := range errs {
+				report = append(report, errReport{
+					Msg:   e,
+					Count: c,
+				})
+			}
+
+			bs, err := json.Marshal(&report)
+			if err != nil {
+				completeLog.WithError(err).Warn("Failed to marshal error report")
+				return
+			}
+
+			completeLog.Warn(string(bs))
 		}
 	}
-	log.WithField("elapsed", elapsed).Debugf("Completed post in %s: %s", elapsed, string(body))
+
+	completeLog.WithFields(logrus.Fields{
+		"elapsed": elapsed,
+	}).Debugf("Completed post in %s", elapsed)
 }

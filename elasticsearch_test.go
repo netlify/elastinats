@@ -17,7 +17,7 @@ import (
 
 var testLog = logrus.StandardLogger().WithField("testing", true)
 var goodResponse = &http.Response{
-	Body:       ioutil.NopCloser(bytes.NewBuffer(nil)),
+	Body:       ioutil.NopCloser(bytes.NewBufferString(`{"errors": false}`)),
 	StatusCode: 200,
 }
 var loads = []payload{
@@ -35,9 +35,7 @@ func TestTimeoutSend(t *testing.T) {
 		payload{"something": "borrowed"},
 		payload{"something": "blue"}})
 
-	assert.Equal(t, int64(1), stats.batchesSent)
-	assert.Equal(t, int64(0), stats.batchesFailed)
-	assert.Equal(t, int64(2), stats.esSent)
+	validateStats(t, stats, 1, 2, 0)
 }
 
 func TestSendOnBatchSize(t *testing.T) {
@@ -47,9 +45,7 @@ func TestSendOnBatchSize(t *testing.T) {
 	stats := sendAndSuch(t, config, loads)
 
 	// validate it was called
-	assert.Equal(t, int64(1), stats.batchesSent)
-	assert.Equal(t, int64(0), stats.batchesFailed)
-	assert.Equal(t, int64(3), stats.esSent)
+	validateStats(t, stats, 1, 3, 0)
 }
 
 func TestErrorParsing(t *testing.T) {
@@ -58,7 +54,7 @@ func TestErrorParsing(t *testing.T) {
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
-			response := `{ "errors": true }`
+			response := `{"errors": true, "items":[{"index": {"error": "this is an error"}}]}`
 			badResponse := &http.Response{
 				Body: ioutil.NopCloser(bytes.NewBufferString(response)),
 				// sometimes ES returns a 200, but with error strings
@@ -74,9 +70,7 @@ func TestErrorParsing(t *testing.T) {
 	sendToES(config, testLog, stats, loads)
 
 	assert.NotNil(t, req)
-	assert.Equal(t, int64(1), stats.batchesFailed)
-	assert.Equal(t, int64(1), stats.batchesSent)
-	assert.Equal(t, int64(4), stats.esSent)
+	validateStats(t, stats, 1, 4, 1)
 }
 
 func TestSendBatchMessageIsOk(t *testing.T) {
@@ -95,6 +89,7 @@ func TestSendBatchMessageIsOk(t *testing.T) {
 
 	assert.NotNil(t, req)
 	assert.Equal(t, "/quotes/log_line/_bulk", req.URL.Path)
+	validateStats(t, stats, 1, 4, 0)
 	validatePayload(t, req.Body, loads)
 }
 
@@ -105,7 +100,7 @@ func TestErrorStatus(t *testing.T) {
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
 			badResponse := &http.Response{
-				Body:       ioutil.NopCloser(bytes.NewBuffer(nil)),
+				Body:       ioutil.NopCloser(bytes.NewBufferString("something")),
 				StatusCode: 500,
 			}
 			return badResponse, nil
@@ -117,10 +112,7 @@ func TestErrorStatus(t *testing.T) {
 	sendToES(config, testLog, stats, loads)
 
 	assert.NotNil(t, req)
-	// 1 sent and failed
-	assert.Equal(t, int64(1), stats.batchesFailed)
-	assert.Equal(t, int64(1), stats.batchesSent)
-	assert.Equal(t, int64(4), stats.esSent)
+	validateStats(t, stats, 1, 4, 1)
 }
 
 func TestMissingClient(t *testing.T) {
@@ -129,9 +121,7 @@ func TestMissingClient(t *testing.T) {
 	stats := new(counters)
 	sendToES(config, testLog, stats, []payload{})
 
-	assert.Equal(t, int64(0), stats.batchesSent)
-	assert.Equal(t, int64(0), stats.batchesFailed)
-	assert.Equal(t, int64(0), stats.esSent)
+	validateStats(t, stats, 0, 0, 0)
 }
 
 func TestSkipEmpties(t *testing.T) {
@@ -145,9 +135,7 @@ func TestSkipEmpties(t *testing.T) {
 	stats := new(counters)
 	sendToES(config, testLog, stats, []payload{})
 
-	assert.Equal(t, int64(0), stats.batchesSent)
-	assert.Equal(t, int64(0), stats.batchesFailed)
-	assert.Equal(t, int64(0), stats.esSent)
+	validateStats(t, stats, 0, 0, 0)
 }
 
 func TestIndexFormatIsRespected(t *testing.T) {
@@ -157,7 +145,7 @@ func TestIndexFormatIsRespected(t *testing.T) {
 	stats := new(counters)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
-			dateString := fmt.Sprintf("test_%d_%s_%d", now.Year(), now.Month(), now.Day())
+			dateString := strings.ToLower(fmt.Sprintf("test_%d_%s_%d", now.Year(), now.Month(), now.Day()))
 			assert.Equal(t, "/"+dateString+"/log_line/_bulk", r.URL.Path)
 			return goodResponse, nil
 		},
@@ -232,6 +220,12 @@ func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *count
 	}
 
 	return stats
+}
+
+func validateStats(t *testing.T, stats *counters, batchesSent, linesSent, batchesFailed int) {
+	assert.EqualValues(t, batchesSent, stats.batchesSent)
+	assert.EqualValues(t, batchesFailed, stats.batchesFailed)
+	assert.EqualValues(t, linesSent, stats.esSent)
 }
 
 func validatePayload(t *testing.T, body io.ReadCloser, payloads []payload) {

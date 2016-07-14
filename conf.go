@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io/ioutil"
+	"strings"
 	"text/template"
 	"time"
 
@@ -50,7 +51,7 @@ func (e *elasticConfig) GetIndex(t time.Time) (string, error) {
 	b := bytes.NewBufferString("")
 	err := e.indexTemplate.Execute(b, t)
 
-	return b.String(), err
+	return strings.ToLower(b.String()), err
 }
 
 func loadFromFile(configFile string) (*configuration, error) {

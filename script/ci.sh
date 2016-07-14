@@ -3,10 +3,12 @@
 set -e
 set -x
 
-WORKSPACE=/go/src/github.com/netlify/$1
+PROJECT=elastinats
+WORKSPACE=/go/src/github.com/netlify/$PROJECT
 
 docker run \
+  --user uts \
 	--volume $(pwd):$WORKSPACE \
 	--workdir $WORKSPACE \
 	--rm \
-	calavera/go-glide:0.10.2 script/test.sh $1
+	calavera/go-glide:0.10.2 script/test.sh $PROJECT

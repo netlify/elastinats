@@ -7,7 +7,6 @@ PROJECT=elastinats
 WORKSPACE=/go/src/github.com/netlify/$PROJECT
 
 docker run \
-  --user uts \
 	--volume $(pwd):$WORKSPACE \
 	--workdir $WORKSPACE \
 	--rm \

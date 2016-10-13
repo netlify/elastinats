@@ -1,4 +1,4 @@
-package main
+package elastic
 
 import (
 	"bytes"
@@ -12,6 +12,9 @@ import (
 	"time"
 
 	"github.com/Sirupsen/logrus"
+	"github.com/netlify/elastinats/conf"
+	"github.com/netlify/elastinats/message"
+	"github.com/netlify/elastinats/stats"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,20 +23,20 @@ var goodResponse = &http.Response{
 	Body:       ioutil.NopCloser(bytes.NewBufferString(`{"errors": false}`)),
 	StatusCode: 200,
 }
-var loads = []payload{
-	payload{"something": "borrowed"},
-	payload{"something": "blue"},
-	payload{"something": "old"},
-	payload{"something": "new"},
+var loads = []message.Payload{
+	{"something": "borrowed"},
+	{"something": "blue"},
+	{"something": "old"},
+	{"something": "new"},
 }
 
 func TestTimeoutSend(t *testing.T) {
 	config := getConfig()
 	config.BatchTimeoutSec = 1
 
-	stats := sendAndSuch(t, config, []payload{
-		payload{"something": "borrowed"},
-		payload{"something": "blue"}})
+	stats := sendAndSuch(t, config, []message.Payload{
+		{"something": "borrowed"},
+		{"something": "blue"}})
 
 	validateStats(t, stats, 1, 2, 0)
 }
@@ -66,7 +69,7 @@ func TestErrorParsing(t *testing.T) {
 		},
 	}
 
-	stats := new(counters)
+	stats := new(stats.Counters)
 	sendToES(config, testLog, stats, loads)
 
 	assert.NotNil(t, req)
@@ -76,14 +79,13 @@ func TestErrorParsing(t *testing.T) {
 func TestSendBatchMessageIsOk(t *testing.T) {
 	var req *http.Request
 	config := getConfig()
+	stats := stats.NewCounter(config)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
 			return goodResponse, nil
 		},
 	}
-
-	stats := new(counters)
 
 	sendToES(config, testLog, stats, loads)
 
@@ -96,6 +98,7 @@ func TestSendBatchMessageIsOk(t *testing.T) {
 func TestErrorStatus(t *testing.T) {
 	var req *http.Request
 	config := getConfig()
+	stats := stats.NewCounter(config)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			req = r
@@ -107,8 +110,6 @@ func TestErrorStatus(t *testing.T) {
 		},
 	}
 
-	stats := new(counters)
-
 	sendToES(config, testLog, stats, loads)
 
 	assert.NotNil(t, req)
@@ -117,32 +118,33 @@ func TestErrorStatus(t *testing.T) {
 
 func TestMissingClient(t *testing.T) {
 	config := getConfig()
-
-	stats := new(counters)
-	sendToES(config, testLog, stats, []payload{})
+	stats := new(stats.Counters)
+	sendToES(config, testLog, stats, []message.Payload{})
 
 	validateStats(t, stats, 0, 0, 0)
 }
 
 func TestSkipEmpties(t *testing.T) {
 	config := getConfig()
+	stats := new(stats.Counters)
+
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			assert.FailNow(t, "Shouldn't have sent anything")
 			return nil, nil
 		},
 	}
-	stats := new(counters)
-	sendToES(config, testLog, stats, []payload{})
+	sendToES(config, testLog, stats, []message.Payload{})
 
 	validateStats(t, stats, 0, 0, 0)
 }
 
 func TestIndexFormatIsRespected(t *testing.T) {
 	config := getConfig()
+	stats := new(stats.Counters)
+
 	config.Index = "test_{{.Year}}_{{.Month}}_{{.Day}}"
 	now := time.Now().UTC()
-	stats := new(counters)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			dateString := strings.ToLower(fmt.Sprintf("test_%d_%s_%d", now.Year(), now.Month(), now.Day()))
@@ -157,7 +159,7 @@ func TestIndexFormatIsRespected(t *testing.T) {
 func TestBadFormatForIndex(t *testing.T) {
 	config := getConfig()
 	config.Index = "test_{{if }}"
-	stats := new(counters)
+	stats := new(stats.Counters)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
 			assert.FailNow(t, "shouldn't have sent anything")
@@ -170,10 +172,11 @@ func TestBadFormatForIndex(t *testing.T) {
 
 // --------------------------------------------------------------------------------------------------------------------
 
-func getConfig() *elasticConfig {
-	c := elasticConfig{
+func getConfig() *conf.ElasticConfig {
+	c := conf.ElasticConfig{
 		Index:           "quotes",
 		Hosts:           []string{"first", "second"},
+		Type:            "log_line",
 		Port:            80,
 		BatchSize:       10,
 		BatchTimeoutSec: 10,
@@ -189,7 +192,7 @@ func (tt testTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return tt.delegate(r)
 }
 
-func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *counters {
+func sendAndSuch(t *testing.T, config *conf.ElasticConfig, payloads []message.Payload) *stats.Counters {
 	reqChan := make(chan *http.Request)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
@@ -198,10 +201,10 @@ func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *count
 		},
 	}
 
-	in := make(chan payload)
-	stats := new(counters)
+	in := make(chan message.Payload)
+	stats := new(stats.Counters)
 
-	shutdown := batchAndSend(config, in, stats, testLog)
+	shutdown := BatchAndSend(config, in, stats, testLog)
 	defer func() {
 		shutdown <- true
 	}()
@@ -214,7 +217,7 @@ func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *count
 	select {
 	case req := <-reqChan:
 		assert.NotNil(t, req)
-		assert.Equal(t, "/quotes/log_line/_bulk", req.URL.Path)
+		assert.Equal(t, fmt.Sprintf("/quotes/%s/_bulk", config.Type), req.URL.Path)
 	case <-time.After(2 * time.Second):
 		assert.FailNow(t, "timed out waiting for request")
 	}
@@ -222,13 +225,13 @@ func sendAndSuch(t *testing.T, config *elasticConfig, payloads []payload) *count
 	return stats
 }
 
-func validateStats(t *testing.T, stats *counters, batchesSent, linesSent, batchesFailed int) {
-	assert.EqualValues(t, batchesSent, stats.batchesSent)
-	assert.EqualValues(t, batchesFailed, stats.batchesFailed)
-	assert.EqualValues(t, linesSent, stats.esSent)
+func validateStats(t *testing.T, stats *stats.Counters, batchesSent, linesSent, batchesFailed int) {
+	assert.EqualValues(t, batchesSent, stats.BatchesSent)
+	assert.EqualValues(t, batchesFailed, stats.BatchesFailed)
+	assert.EqualValues(t, linesSent, stats.MessagesSent)
 }
 
-func validatePayload(t *testing.T, body io.ReadCloser, payloads []payload) {
+func validatePayload(t *testing.T, body io.ReadCloser, payloads []message.Payload) {
 	assert.NotNil(t, body)
 
 	defer body.Close()

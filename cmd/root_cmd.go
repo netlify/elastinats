@@ -23,6 +23,9 @@ var rootCmd = &cobra.Command{
 }
 
 func RootCmd() *cobra.Command {
+	rootCmd.PersistentFlags().StringP("config", "c", "", "a config file to use")
+	rootCmd.AddCommand(versionCmd)
+
 	return rootCmd
 }
 

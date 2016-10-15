@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 
+#!/usr/bin/env bash
+
 set -e
 set -x
 
-trap "{ rm -rf vendor; }" EXIT
+OUTPUT="$1"
 
-glide --no-color install
-go test $(go list ./... | grep -v /vendor/)
-go build -o $1
+make deps
+make test
+if [ "$OUTPUT" != "" ]; then
+    make build
+    echo "Finshed building $OUTPUT: $(./$OUTPUT version)"
+fi

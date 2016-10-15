@@ -7,3 +7,4 @@ import:
 - package: github.com/stretchr/testify
   subpackages:
   - assert
+- package: github.com/spf13/viper

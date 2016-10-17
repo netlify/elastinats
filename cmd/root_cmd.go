@@ -39,7 +39,7 @@ func run(cmd *cobra.Command, _ []string) {
 		log.Fatal("Failed to configure logging")
 	}
 
-	rootLogger.Info("Configured - starting to connect and consume")
+	rootLogger.WithField("version", Version).Info("Configured - starting to connect and consume")
 
 	// connect to NATS
 	rootLogger.WithFields(logrus.Fields{
@@ -55,6 +55,7 @@ func run(cmd *cobra.Command, _ []string) {
 
 	var defaultConsumer nats.MsgHandler
 	if config.ElasticConf != nil {
+		rootLogger.Debug("Starting default Consumer")
 		defaultConsumer = buildConsumer(config.ElasticConf, config.ReportSec, rootLogger)
 	}
 
@@ -68,15 +69,24 @@ func run(cmd *cobra.Command, _ []string) {
 		// connect ~ does it go to the default or a custom one?
 		cons := defaultConsumer
 		if pair.Endpoint != nil {
-			log.Debugf("Starting consumer for endpoint %+v", pair.Endpoint)
+			log.WithFields(logrus.Fields{
+				"hosts": pair.Endpoint.Hosts,
+				"type":  pair.Endpoint.Type,
+				"index": pair.Endpoint.Index,
+			}).Debugf("Starting consumer for endpoint")
 			cons = buildConsumer(pair.Endpoint, config.ReportSec, log)
+		} else if defaultConsumer == nil {
+			log.Fatal("No consumer provided and there is no default handler")
+		} else {
+			log.Debug("Using default consumer")
 		}
 
-		_ = cons
 		var err error
 		if pair.Group == "" {
+			log.Debug("Subscribing")
 			_, err = nc.Subscribe(pair.Subject, cons)
 		} else {
+			log.Debug("Subscribing to Queue")
 			_, err = nc.QueueSubscribe(pair.Subject, pair.Group, cons)
 		}
 

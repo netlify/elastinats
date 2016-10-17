@@ -9,8 +9,8 @@ import (
 )
 
 type LoggingConfig struct {
-	Level string `json:"log_level"`
-	File  string `json:"log_file"`
+	Level string `mapstructure:"log_level" json:"log_level"`
+	File  string `mapstructure:"log_file" json:"log_file"`
 }
 
 // ConfigureLogging will take the logging configuration and also adds
@@ -21,6 +21,12 @@ func ConfigureLogging(config *LoggingConfig) (*logrus.Entry, error) {
 		return nil, err
 	}
 
+	// always use the full timestamp
+	logrus.SetFormatter(&logrus.TextFormatter{
+		FullTimestamp:    true,
+		DisableTimestamp: false,
+	})
+
 	// use a file if you want
 	if config.File != "" {
 		f, errOpen := os.OpenFile(config.File, os.O_RDWR|os.O_APPEND, 0660)
@@ -28,6 +34,7 @@ func ConfigureLogging(config *LoggingConfig) (*logrus.Entry, error) {
 			return nil, errOpen
 		}
 		logrus.SetOutput(bufio.NewWriter(f))
+		logrus.Infof("Set output file to %s", config.File)
 	}
 
 	if config.Level != "" {
@@ -36,13 +43,8 @@ func ConfigureLogging(config *LoggingConfig) (*logrus.Entry, error) {
 			return nil, err
 		}
 		logrus.SetLevel(level)
+		logrus.Debug("Set log level to: " + logrus.GetLevel().String())
 	}
-
-	// always use the fulltimestamp
-	logrus.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:    true,
-		DisableTimestamp: false,
-	})
 
 	return logrus.StandardLogger().WithField("hostname", hostname), nil
 }

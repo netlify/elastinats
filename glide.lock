@@ -28,14 +28,6 @@ imports:
   - encoders/builtin
 - name: github.com/nats-io/nuid
   version: 289cccf02c178dc782430d534e3c1f5b72af807f
-- name: github.com/netlify/elastinats
-  version: 9ccbe13335864732a882ce98a96e934b8f0070af
-  subpackages:
-  - cmd
-  - conf
-  - elastic
-  - messaging
-  - stats
 - name: github.com/pelletier/go-buffruneio
   version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
 - name: github.com/pelletier/go-toml

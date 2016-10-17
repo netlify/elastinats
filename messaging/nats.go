@@ -12,7 +12,7 @@ import (
 
 type NatsConfig struct {
 	CAFiles  []string `mapstructure:"ca_files"  json:"ca_files"`
-	KeyFile  string   `mapstructure:"key_files" json:"key_file"`
+	KeyFile  string   `mapstructure:"key_file"  json:"key_file"`
 	CertFile string   `mapstructure:"cert_file" json:"cert_file"`
 	Servers  []string `mapstructure:"servers"   json:"servers"`
 }

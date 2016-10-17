@@ -19,23 +19,23 @@ type Config struct {
 	NatsConf    messaging.NatsConfig `mapstructure:"nats_conf"    json:"nats_conf"`
 	ElasticConf *ElasticConfig       `mapstructure:"elastic_conf" json:"elastic_conf"`
 	LogConf     LoggingConfig        `mapstructure:"log_conf"     json:"log_conf"`
-	Subjects    []SubjectAndGroup    `mapstructure:"subject"      json:"subjects"`
+	Subjects    []SubjectAndGroup    `mapstructure:"subjects"     json:"subjects"`
 	ReportSec   int64                `mapstructure:"report_sec"   json:"report_sec"`
 }
 
 type SubjectAndGroup struct {
-	Subject  string         `mapstructure:"subject"  json:"subject"`
-	Group    string         `mapstructure:"group"    json:"group"`
-	Endpoint *ElasticConfig `mapstructure:"endpoint" json:"endpoint"`
+	Subject  string         `mapstructure:"subject"      json:"subject"`
+	Group    string         `mapstructure:"group"        json:"group"`
+	Endpoint *ElasticConfig `mapstructure:"elastic_conf" json:"endpoint"`
 }
 
 type ElasticConfig struct {
-	Index           string   `mapstructure:"index"            json:"index"`
-	Hosts           []string `mapstructure:"hosts"            json:"hosts"`
-	Port            int      `mapstructure:"port"             json:"port"`
-	Type            string   `mapstructure:"type"             json:"type"`
-	BatchSize       int      `mapstructure:"batch_size"       json:"batch_size"`
-	BatchTimeoutSec int      `mapstructure:"batch_timeout_sec json:"batch_timeout_sec"`
+	Index           string   `mapstructure:"index"             json:"index"`
+	Hosts           []string `mapstructure:"hosts"             json:"hosts"`
+	Port            int      `mapstructure:"port"              json:"port"`
+	Type            string   `mapstructure:"type"              json:"type"`
+	BatchSize       int      `mapstructure:"batch_size"        json:"batch_size"`
+	BatchTimeoutSec int      `mapstructure:"batch_timeout_sec" json:"batch_timeout_sec"`
 
 	indexTemplate *template.Template
 }

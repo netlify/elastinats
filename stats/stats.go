@@ -52,8 +52,9 @@ func (c *Counters) ReportStats(reportSec time.Duration, log *logrus.Entry) {
 		return
 	}
 
-	ticks := time.Tick(time.Second * time.Duration(reportSec))
+	ticks := time.Tick(reportSec)
 	memstats := new(runtime.MemStats)
+	log.Debugf("Starting to report stats every %s", reportSec.String())
 	for range ticks {
 		runtime.ReadMemStats(memstats)
 

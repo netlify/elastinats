@@ -36,6 +36,7 @@ func BatchAndSend(config *conf.ElasticConfig, incoming <-chan messaging.Payload,
 		"port":          config.Port,
 		"batch_size":    config.BatchSize,
 		"batch_timeout": config.BatchTimeoutSec,
+		"type":          config.Type,
 	}).Info("Starting to consume forever and batch send to ES")
 
 	batch := make([]messaging.Payload, 0, config.BatchSize)

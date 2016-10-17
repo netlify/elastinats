@@ -13,7 +13,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/netlify/elastinats/conf"
-	"github.com/netlify/elastinats/message"
+	"github.com/netlify/elastinats/messaging"
 	"github.com/netlify/elastinats/stats"
 	"github.com/stretchr/testify/assert"
 )
@@ -23,7 +23,7 @@ var goodResponse = &http.Response{
 	Body:       ioutil.NopCloser(bytes.NewBufferString(`{"errors": false}`)),
 	StatusCode: 200,
 }
-var loads = []message.Payload{
+var loads = []messaging.Payload{
 	{"something": "borrowed"},
 	{"something": "blue"},
 	{"something": "old"},
@@ -34,7 +34,7 @@ func TestTimeoutSend(t *testing.T) {
 	config := getConfig()
 	config.BatchTimeoutSec = 1
 
-	stats := sendAndSuch(t, config, []message.Payload{
+	stats := sendAndSuch(t, config, []messaging.Payload{
 		{"something": "borrowed"},
 		{"something": "blue"}})
 
@@ -119,7 +119,7 @@ func TestErrorStatus(t *testing.T) {
 func TestMissingClient(t *testing.T) {
 	config := getConfig()
 	stats := new(stats.Counters)
-	sendToES(config, testLog, stats, []message.Payload{})
+	sendToES(config, testLog, stats, []messaging.Payload{})
 
 	validateStats(t, stats, 0, 0, 0)
 }
@@ -134,7 +134,7 @@ func TestSkipEmpties(t *testing.T) {
 			return nil, nil
 		},
 	}
-	sendToES(config, testLog, stats, []message.Payload{})
+	sendToES(config, testLog, stats, []messaging.Payload{})
 
 	validateStats(t, stats, 0, 0, 0)
 }
@@ -192,7 +192,7 @@ func (tt testTransport) RoundTrip(r *http.Request) (*http.Response, error) {
 	return tt.delegate(r)
 }
 
-func sendAndSuch(t *testing.T, config *conf.ElasticConfig, payloads []message.Payload) *stats.Counters {
+func sendAndSuch(t *testing.T, config *conf.ElasticConfig, payloads []messaging.Payload) *stats.Counters {
 	reqChan := make(chan *http.Request)
 	client.Transport = testTransport{
 		delegate: func(r *http.Request) (*http.Response, error) {
@@ -201,7 +201,7 @@ func sendAndSuch(t *testing.T, config *conf.ElasticConfig, payloads []message.Pa
 		},
 	}
 
-	in := make(chan message.Payload)
+	in := make(chan messaging.Payload)
 	stats := new(stats.Counters)
 
 	shutdown := BatchAndSend(config, in, stats, testLog)
@@ -231,7 +231,7 @@ func validateStats(t *testing.T, stats *stats.Counters, batchesSent, linesSent, 
 	assert.EqualValues(t, linesSent, stats.MessagesSent)
 }
 
-func validatePayload(t *testing.T, body io.ReadCloser, payloads []message.Payload) {
+func validatePayload(t *testing.T, body io.ReadCloser, payloads []messaging.Payload) {
 	assert.NotNil(t, body)
 
 	defer body.Close()

@@ -1,41 +1,41 @@
 package conf
 
 import (
-	"os"
+	"bytes"
+	"errors"
 	"strings"
 	"text/template"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"bytes"
-	"errors"
-	"time"
+	"os"
 
-	"github.com/netlify/messaging"
+	"github.com/netlify/elastinats/messaging"
 )
 
 type Config struct {
-	NatsConf    messaging.NatsConfig `json:"nats_conf"`
-	ElasticConf *ElasticConfig       `json:"elastic_conf"`
-	LogConf     LoggingConfig        `json:"log_conf"`
-	Subjects    []SubjectAndGroup    `json:"subjects"`
-	ReportSec   int64                `json:"report_sec"`
+	NatsConf    messaging.NatsConfig `mapstructure:"nats_conf"    json:"nats_conf"`
+	ElasticConf *ElasticConfig       `mapstructure:"elastic_conf" json:"elastic_conf"`
+	LogConf     LoggingConfig        `mapstructure:"log_conf"     json:"log_conf"`
+	Subjects    []SubjectAndGroup    `mapstructure:"subject"      json:"subjects"`
+	ReportSec   int64                `mapstructure:"report_sec"   json:"report_sec"`
 }
 
 type SubjectAndGroup struct {
-	Subject  string         `json:"subject"`
-	Group    string         `json:"group"`
-	Endpoint *ElasticConfig `json:"endpoint"`
+	Subject  string         `mapstructure:"subject"  json:"subject"`
+	Group    string         `mapstructure:"group"    json:"group"`
+	Endpoint *ElasticConfig `mapstructure:"endpoint" json:"endpoint"`
 }
 
 type ElasticConfig struct {
-	Index           string   `json:"index"`
-	Hosts           []string `json:"hosts"`
-	Port            int      `json:"port"`
-	Type            string   `json:"type"`
-	BatchSize       int      `json:"batch_size"`
-	BatchTimeoutSec int      `json:"batch_timeout_sec"`
+	Index           string   `mapstructure:"index"            json:"index"`
+	Hosts           []string `mapstructure:"hosts"            json:"hosts"`
+	Port            int      `mapstructure:"port"             json:"port"`
+	Type            string   `mapstructure:"type"             json:"type"`
+	BatchSize       int      `mapstructure:"batch_size"       json:"batch_size"`
+	BatchTimeoutSec int      `mapstructure:"batch_timeout_sec json:"batch_timeout_sec"`
 
 	indexTemplate *template.Template
 }
@@ -85,19 +85,10 @@ func LoadConfig(cmd *cobra.Command) (*Config, error) {
 	}
 
 	config := new(Config)
+
 	if err := viper.Unmarshal(config); err != nil {
 		return nil, err
 	}
 
-	config, err = populateConfig(config)
-	if err != nil {
-		return nil, err
-	}
-
-	return validateConfig(config)
-}
-
-func validateConfig(config *Config) (*Config, error) {
-	// TODO
 	return config, nil
 }

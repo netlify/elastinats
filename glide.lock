@@ -1,10 +1,6 @@
-hash: 5da08334758a0330273a4d1c158e76ae43bbf0cb939bfcee24bab14882a6a250
-updated: 2016-10-12T22:00:33.829331953-07:00
+hash: ce63c8b61e7a82280a7009cbf610dafdae38dfc0135309965055ef13651e153b
+updated: 2016-10-17T09:31:13.693207602-07:00
 imports:
-- name: github.com/cloudflare/cfssl
-  version: 6400d69b261ab6f914cb1571c5ab3ba38c1516cc
-  subpackages:
-  - errors
 - name: github.com/fsnotify/fsnotify
   version: bd2828f9f176e52d7222e565abb2d338d3f3c103
 - name: github.com/hashicorp/hcl
@@ -32,8 +28,6 @@ imports:
   - encoders/builtin
 - name: github.com/nats-io/nuid
   version: a5152d67cf63cbfb5d992a395458722a45194715
-- name: github.com/netlify/messaging
-  version: bbfdc4308f73ca41c0a872bd0ae7181c1bf29ed2
 - name: github.com/pelletier/go-buffruneio
   version: df1e16fde7fc330a0ca68167c23bf7ed6ac31d6d
 - name: github.com/pelletier/go-toml
@@ -58,15 +52,13 @@ imports:
 - name: github.com/spf13/pflag
   version: cb88ea77998c3f024757528e3305022ab50b43be
 - name: github.com/spf13/viper
-  version: c14ce6d43cf5e22e2bd44938f3f45a2761c18350
-- name: github.com/streadway/amqp
-  version: 2e25825abdbd7752ff08b270d313b93519a0a232
+  version: 50515b700e02658272117a72bd641b6b7f1222e5
 - name: github.com/stretchr/testify
   version: d77da356e56a7428ad25149ca77381849a6a5232
   subpackages:
   - assert
 - name: golang.org/x/crypto
-  version: 5f31782cfb2b6373211f8f9fbf31283fa234b570
+  version: 5f4e837b98443e9e7a65072235205993af565d85
   subpackages:
   - ssh
   - curve25519
@@ -77,7 +69,7 @@ imports:
   subpackages:
   - unix
 - name: golang.org/x/text
-  version: afa951a3250e0e2195be7366207189f3184d3fe1
+  version: fa5033c827cad7080e8e7047a0091945b0e1f031
   subpackages:
   - transform
   - unicode/norm

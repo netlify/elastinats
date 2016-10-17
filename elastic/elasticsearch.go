@@ -12,7 +12,7 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/netlify/elastinats/conf"
-	"github.com/netlify/elastinats/message"
+	"github.com/netlify/elastinats/messaging"
 	"github.com/netlify/elastinats/stats"
 )
 
@@ -30,7 +30,7 @@ var client = http.Client{
 	Timeout: time.Second * 2,
 }
 
-func BatchAndSend(config *conf.ElasticConfig, incoming <-chan message.Payload, stats *stats.Counters, log *logrus.Entry) chan<- bool {
+func BatchAndSend(config *conf.ElasticConfig, incoming <-chan messaging.Payload, stats *stats.Counters, log *logrus.Entry) chan<- bool {
 	log.WithFields(logrus.Fields{
 		"hosts":         config.Hosts,
 		"port":          config.Port,
@@ -38,7 +38,7 @@ func BatchAndSend(config *conf.ElasticConfig, incoming <-chan message.Payload, s
 		"batch_timeout": config.BatchTimeoutSec,
 	}).Info("Starting to consume forever and batch send to ES")
 
-	batch := make([]message.Payload, 0, config.BatchSize)
+	batch := make([]messaging.Payload, 0, config.BatchSize)
 
 	sendTimeout := time.Tick(time.Duration(config.BatchTimeoutSec) * time.Second)
 	shutdown := make(chan bool)
@@ -52,18 +52,18 @@ func BatchAndSend(config *conf.ElasticConfig, incoming <-chan message.Payload, s
 				if len(batch) >= config.BatchSize {
 					log.WithField("size", len(batch)).Debug("Sending batch because of size")
 
-					toSend := make([]message.Payload, len(batch))
+					toSend := make([]messaging.Payload, len(batch))
 					copy(toSend, batch)
-					batch = make([]message.Payload, 0, config.BatchSize)
+					batch = make([]messaging.Payload, 0, config.BatchSize)
 
 					go sendToES(config, log, stats, toSend)
 				}
 			case <-sendTimeout:
 				log.WithField("size", len(batch)).Debug("Sending batch because of timeout")
 
-				toSend := make([]message.Payload, len(batch))
+				toSend := make([]messaging.Payload, len(batch))
 				copy(toSend, batch)
-				batch = make([]message.Payload, 0, config.BatchSize)
+				batch = make([]messaging.Payload, 0, config.BatchSize)
 
 				go sendToES(config, log, stats, toSend)
 			case <-shutdown:
@@ -76,7 +76,7 @@ func BatchAndSend(config *conf.ElasticConfig, incoming <-chan message.Payload, s
 	return shutdown
 }
 
-func sendToES(config *conf.ElasticConfig, log *logrus.Entry, stats *stats.Counters, batch []message.Payload) {
+func sendToES(config *conf.ElasticConfig, log *logrus.Entry, stats *stats.Counters, batch []messaging.Payload) {
 	if len(batch) == 0 {
 		return
 	}

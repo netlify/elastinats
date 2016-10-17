@@ -7,12 +7,11 @@ import (
 
 	"github.com/Sirupsen/logrus"
 	"github.com/nats-io/nats"
-	"github.com/netlify/messaging"
 	"github.com/spf13/cobra"
 
 	"github.com/netlify/elastinats/conf"
 	"github.com/netlify/elastinats/elastic"
-	"github.com/netlify/elastinats/message"
+	"github.com/netlify/elastinats/messaging"
 	"github.com/netlify/elastinats/stats"
 )
 
@@ -43,7 +42,12 @@ func run(cmd *cobra.Command, _ []string) {
 	rootLogger.Info("Configured - starting to connect and consume")
 
 	// connect to NATS
-	rootLogger.WithFields(config.NatsConf.LogFields()).Info("Connecting to Nats")
+	rootLogger.WithFields(logrus.Fields{
+		"servers":   config.NatsConf.Servers,
+		"ca_files":  config.NatsConf.CAFiles,
+		"key_file":  config.NatsConf.KeyFile,
+		"cert_file": config.NatsConf.CertFile,
+	}).Info("Connecting to Nats")
 	nc, err := messaging.ConnectToNats(&config.NatsConf)
 	if err != nil {
 		rootLogger.WithError(err).Fatal("Failed to connect to nats")
@@ -89,7 +93,7 @@ func run(cmd *cobra.Command, _ []string) {
 
 func buildConsumer(el *conf.ElasticConfig, reportSec int64, log *logrus.Entry) nats.MsgHandler {
 	// create a channel to use
-	c := make(chan message.Payload)
+	c := make(chan messaging.Payload)
 	stats := stats.NewCounter(el)
 	interval := time.Second * time.Duration(reportSec)
 	go stats.ReportStats(interval, log.WithFields(logrus.Fields{
@@ -102,7 +106,7 @@ func buildConsumer(el *conf.ElasticConfig, reportSec int64, log *logrus.Entry) n
 	return func(m *nats.Msg) {
 		stats.IncrementMessagesConsumed()
 		go func() {
-			payload := message.NewPayload(string(m.Data), m.Subject)
+			payload := messaging.NewPayload(string(m.Data), m.Subject)
 
 			// maybe it is json!
 			_ = json.Unmarshal(m.Data, payload)

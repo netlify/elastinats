@@ -2,7 +2,6 @@ package: github.com/netlify/elastinats
 import:
 - package: github.com/Sirupsen/logrus
 - package: github.com/nats-io/nats
-- package: github.com/netlify/messaging
 - package: github.com/spf13/cobra
 - package: github.com/stretchr/testify
   subpackages:

@@ -51,10 +51,14 @@ func (config *NatsConfig) ServerString() string {
 }
 
 // ConnectToNats will do a TLS connection to the nats servers specified
-func ConnectToNats(config *NatsConfig) (*nats.Conn, error) {
+func ConnectToNats(config *NatsConfig, errHandler nats.ErrHandler) (*nats.Conn, error) {
 	tlsConfig, err := config.TLSConfig()
 	if err != nil {
 		return nil, err
+	}
+
+	if errHandler != nil {
+		return nats.Connect(config.ServerString(), nats.Secure(tlsConfig), nats.ErrorHandler(errHandler))
 	}
 
 	return nats.Connect(config.ServerString(), nats.Secure(tlsConfig))

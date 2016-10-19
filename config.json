@@ -1,5 +1,5 @@
 {
-  "report_sec": 5,
+  "report_sec": 30,
   "nats_conf": {
     "servers": ["nats://nats.lo:4222"],
     "cert_file": "/usr/local/etc/certs/test.pem",
@@ -11,7 +11,8 @@
     "hosts": [ "elastic.lo" ],
     "index": "logs",
     "port": 9200,
-    "batch_size": 100,
+    "type": "log_line",
+    "batch_size": 5000,
     "batch_timeout_sec": 5
   },
   "log_conf": {
@@ -20,10 +21,7 @@
   },
   "subjects": [
     {
-      "subject": "test-1-log"
-    },
-    {
-      "subject": "test-log.>",
+      "subject": "logs.>",
       "group": "shared"
     }
   ]

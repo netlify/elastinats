@@ -21,6 +21,7 @@ type Config struct {
 	LogConf     LoggingConfig        `mapstructure:"log_conf"     json:"log_conf"`
 	Subjects    []SubjectAndGroup    `mapstructure:"subjects"     json:"subjects"`
 	ReportSec   int64                `mapstructure:"report_sec"   json:"report_sec"`
+	BufferSize  int64                `mapstructure:"buffer_size"  json:"buffer_size"`
 }
 
 type SubjectAndGroup struct {
@@ -36,8 +37,8 @@ type ElasticConfig struct {
 	Type            string   `mapstructure:"type"              json:"type"`
 	BatchSize       int      `mapstructure:"batch_size"        json:"batch_size"`
 	BatchTimeoutSec int      `mapstructure:"batch_timeout_sec" json:"batch_timeout_sec"`
-
-	indexTemplate *template.Template
+	BufferSize      int      `mapstructure:"buffer_size"       json:"buffer_size"`
+	indexTemplate   *template.Template
 }
 
 func (e *ElasticConfig) GetIndex(t time.Time) (string, error) {

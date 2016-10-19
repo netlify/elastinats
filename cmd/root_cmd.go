@@ -2,8 +2,6 @@ package cmd
 
 import (
 	"encoding/json"
-	"log"
-	"time"
 
 	"github.com/Sirupsen/logrus"
 	"github.com/nats-io/nats"
@@ -31,12 +29,12 @@ func RootCmd() *cobra.Command {
 func run(cmd *cobra.Command, _ []string) {
 	config, err := conf.LoadConfig(cmd)
 	if err != nil {
-		log.Fatalf("Failed to load configuation: %v", err)
+		logrus.Fatalf("Failed to load configuation: %v", err)
 	}
 
 	rootLogger, err := conf.ConfigureLogging(&config.LogConf)
 	if err != nil {
-		log.Fatal("Failed to configure logging")
+		logrus.Fatal("Failed to configure logging")
 	}
 
 	rootLogger.WithField("version", Version).Info("Configured - starting to connect and consume")
@@ -48,15 +46,16 @@ func run(cmd *cobra.Command, _ []string) {
 		"key_file":  config.NatsConf.KeyFile,
 		"cert_file": config.NatsConf.CertFile,
 	}).Info("Connecting to Nats")
-	nc, err := messaging.ConnectToNats(&config.NatsConf)
+	nc, err := messaging.ConnectToNats(&config.NatsConf, errorReporter(rootLogger))
 	if err != nil {
 		rootLogger.WithError(err).Fatal("Failed to connect to nats")
 	}
 
 	var defaultConsumer nats.MsgHandler
+	var defaultStats *stats.Counters
 	if config.ElasticConf != nil {
 		rootLogger.Debug("Starting default Consumer")
-		defaultConsumer = buildConsumer(config.ElasticConf, config.ReportSec, rootLogger)
+		defaultStats, defaultConsumer = buildConsumer(config.ElasticConf, config.BufferSize, rootLogger)
 	}
 
 	for _, pair := range config.Subjects {
@@ -68,32 +67,39 @@ func run(cmd *cobra.Command, _ []string) {
 
 		// connect ~ does it go to the default or a custom one?
 		cons := defaultConsumer
-		if pair.Endpoint != nil {
+		st := defaultStats
+		if pair.Endpoint == nil && defaultConsumer == nil {
+			log.Fatal("No consumer provided and there is no default handler")
+		} else if pair.Endpoint == nil {
+			log.Debug("Using default consumer")
+		} else {
 			log.WithFields(logrus.Fields{
 				"hosts": pair.Endpoint.Hosts,
 				"type":  pair.Endpoint.Type,
 				"index": pair.Endpoint.Index,
 			}).Debugf("Starting consumer for endpoint")
-			cons = buildConsumer(pair.Endpoint, config.ReportSec, log)
-		} else if defaultConsumer == nil {
-			log.Fatal("No consumer provided and there is no default handler")
-		} else {
-			log.Debug("Using default consumer")
+			st, cons = buildConsumer(pair.Endpoint, config.BufferSize, log)
 		}
 
+		// subscribe ~ queue or alone
 		var err error
+		var sub *nats.Subscription
 		if pair.Group == "" {
 			log.Debug("Subscribing")
-			_, err = nc.Subscribe(pair.Subject, cons)
+			sub, err = nc.Subscribe(pair.Subject, cons)
 		} else {
 			log.Debug("Subscribing to Queue")
-			_, err = nc.QueueSubscribe(pair.Subject, pair.Group, cons)
+			sub, err = nc.QueueSubscribe(pair.Subject, pair.Group, cons)
 		}
-
 		if err != nil {
 			log.WithError(err).Fatal("Failed to subscribe")
 		}
 
+		if err = sub.SetPendingLimits(-1, -1); err != nil {
+			log.WithError(err).Fatal("Failed to unlimit pending limits")
+		}
+
+		st.StartReporting(config.ReportSec, nc, sub, log)
 		log.Info("Started consuming from subject")
 	}
 
@@ -101,19 +107,31 @@ func run(cmd *cobra.Command, _ []string) {
 	select {}
 }
 
-func buildConsumer(el *conf.ElasticConfig, reportSec int64, log *logrus.Entry) nats.MsgHandler {
-	// create a channel to use
-	c := make(chan messaging.Payload)
-	stats := stats.NewCounter(el)
-	interval := time.Second * time.Duration(reportSec)
-	go stats.ReportStats(interval, log.WithFields(logrus.Fields{
-		"index": el.Index,
-		"type":  el.Type,
-	}))
+func errorReporter(log *logrus.Entry) nats.ErrHandler {
+	return func(_ *nats.Conn, sub *nats.Subscription, err error) {
+		pendingMsgs, pendingBytes, _ := sub.Pending()
+		droppedMsgs, _ := sub.Dropped()
+		maxMsgs, maxBytes, _ := sub.PendingLimits()
 
+		log.WithError(err).WithFields(logrus.Fields{
+			"subject":           sub.Subject,
+			"queue":             sub.Queue,
+			"pending_msgs":      pendingMsgs,
+			"pending_bytes":     pendingBytes,
+			"max_msgs_pending":  maxMsgs,
+			"max_bytes_pending": maxBytes,
+			"dropped_msgs":      droppedMsgs,
+		}).Warn("Error while consuming from nats")
+	}
+}
+
+func buildConsumer(el *conf.ElasticConfig, bufferSize int64, log *logrus.Entry) (*stats.Counters, nats.MsgHandler) {
+	stats := stats.NewCounter(el)
+
+	c := make(chan messaging.Payload, bufferSize)
 	elastic.BatchAndSend(el, c, stats, log)
 
-	return func(m *nats.Msg) {
+	return stats, func(m *nats.Msg) {
 		stats.IncrementMessagesConsumed()
 		go func() {
 			payload := messaging.NewPayload(string(m.Data), m.Subject)
